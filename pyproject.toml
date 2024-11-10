@@ -1,0 +1,17 @@
+[project]
+name = "QMDown"
+version = "0.1.0"
+description = "Default template for PDM package"
+authors = [
+    {name = "Luren", email = "68656403+luren-dc@users.noreply.github.com"},
+]
+dependencies = ["typer>=0.13.0", "qqmusic-api-python>=0.1.10", "aiofiles>=24.1.0", "httpx>=0.27.2"]
+requires-python = "<3.13,>=3.9"
+readme = "README.md"
+license = {text = "MIT"}
+
+[project.scripts]
+QMDown = "QMDown.main:app"
+
+[tool.pdm]
+distribution = true
