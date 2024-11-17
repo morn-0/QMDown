@@ -15,7 +15,6 @@ logging.basicConfig(
     datefmt="[%X]",
     handlers=[
         RichHandler(
-            show_time=True,
             show_path=False,
             markup=True,
             rich_tracebacks=True,
@@ -23,6 +22,7 @@ logging.basicConfig(
         )
     ],
 )
+logging.getLogger("httpx").setLevel("CRITICAL")
 
 logging.info(f"QMDown {__version__}")
 

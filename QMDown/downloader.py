@@ -1,8 +1,8 @@
 import asyncio
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Optional
 
 import httpx
 from rich.progress import (
@@ -18,8 +18,7 @@ from QMDown import console
 
 @dataclass()
 class DownloadTask:
-    """
-    下载任务数据类
+    """下载任务数据类
 
     Args:
         url: 文件 URL。
@@ -48,13 +47,13 @@ class AsyncDownloader:
 
     def __init__(
         self,
-        save_dir: str = "downloads",
+        save_dir: str | Path = "downloads",
         max_concurrent: int = 5,
         retries: int = 3,
         timeout: int = 10,
-        on_start: Optional[Callable[[DownloadTask], None]] = None,
-        on_complete: Optional[Callable[[DownloadTask], None]] = None,
-        on_error: Optional[Callable[[DownloadTask, Exception], None]] = None,
+        on_start: Callable[[DownloadTask], None] | None = None,
+        on_complete: Callable[[DownloadTask], None] | None = None,
+        on_error: Callable[[DownloadTask, Exception], None] | None = None,
     ):
         self.save_dir = Path(save_dir)
         self.max_concurrent = max_concurrent
@@ -88,7 +87,7 @@ class AsyncDownloader:
         """
         task = DownloadTask(url, filename, self.save_dir / filename)
         await self.task_queue.put(task)
-        logging.info(f"Task added: {url} -> {task.filename}")
+        logging.debug(f"Task added: {url} -> {task.filename}")
 
     async def worker(self, client: httpx.AsyncClient):
         """队列工作者，从任务队列中提取并执行下载任务。
@@ -110,75 +109,81 @@ class AsyncDownloader:
             client: 用于发送请求的 HTTP 客户端。
             task: 下载任务对象。
         """
-        task_id = self.progress.add_task(
-            description="",
-            filename=task.filename,
-            start=False,
-        )
+        task_id = self._initialize_task(task)
 
-        if task.filepath.exists():
-            logging.info(f"Skipped: {task.url} -> {task.filename}")
-            self.progress.update(task_id, description="已存在")
+        if self._is_task_skipped(task, task_id):
             return
 
         for attempt in range(1, self.retries + 1):
             async with self.semaphore:
                 try:
+                    self._on_start(task)
                     self.progress.start_task(task_id)
 
-                    self.progress.update(
-                        task_id,
-                        description="",
-                    )
+                    total = await self._fetch_file_size(client, task, task_id)
+                    await self._download_file(client, task, task_id, total)
 
-                    # 获取文件大小
-                    response = await client.head(task.url, timeout=self.timeout)
-                    if response.status_code != 200:
-                        raise httpx.RequestError(f"HTTP {response.status_code}")
-
-                    total = int(response.headers.get("Content-Length", 0))
-
-                    self.progress.update(task_id, total=total)
-
-                    # Hook: 开始下载
-                    if self.on_start:
-                        self.on_start(task)
-
-                    # 确保保存目录存在
-                    self.save_dir.mkdir(parents=True, exist_ok=True)
-
-                    async with client.stream(
-                        "GET", task.url, timeout=self.timeout
-                    ) as response:
-                        if response.status_code != 200:
-                            raise httpx.RequestError(f"HTTP {response.status_code}")
-
-                        with open(task.filepath, "wb") as f:
-                            async for chunk in response.aiter_bytes(
-                                chunk_size=1024 * 5
-                            ):
-                                f.write(chunk)
-                                self.progress.update(task_id, advance=len(chunk))
-
-                    logging.debug(f"Downloaded: {task.url} -> {task.filename}")
-
-                    # Hook: 下载完成
-                    if self.on_complete:
-                        self.on_complete(task)
+                    self._on_complete(task)
                     return
                 except Exception as e:
-                    self.progress.update(
-                        task_id,
-                        description=f"[yellow]Retry {attempt}/{self.retries}...",
-                    )
-                    logging.warning(f"Failed attempt {attempt} for {task.url}: {e}")
+                    self._handle_retry(task, task_id, attempt, e)
                     if attempt == self.retries:
-                        self.progress.update(task_id, description="[red]Failed")
-                        logging.error(f"Failed: {task.url} -> {task.filename}: {e}")
+                        self._on_error(task, e)
 
-                        # Hook: 下载失败
-                        if self.on_error:
-                            self.on_error(task, e)
+    def _initialize_task(self, task: DownloadTask):
+        return self.progress.add_task(
+            description="",
+            filename=task.filename,
+            start=False,
+        )
+
+    def _is_task_skipped(self, task: DownloadTask, task_id: int) -> bool:
+        if task.filepath.exists():
+            logging.debug(f"Skipped: {task.url} -> {task.filename}")
+            self.progress.update(task_id, description="已存在")
+            return True
+        return False
+
+    async def _fetch_file_size(self, client: httpx.AsyncClient, task: DownloadTask, task_id: int) -> int:
+        response = await client.head(task.url, timeout=self.timeout)
+        if response.status_code != 200:
+            raise httpx.RequestError(f"HTTP {response.status_code}")
+        total = int(response.headers.get("Content-Length", 0))
+        self.progress.update(task_id, total=total)
+        return total
+
+    async def _download_file(self, client: httpx.AsyncClient, task: DownloadTask, task_id: int, total: int):
+        self.save_dir.mkdir(parents=True, exist_ok=True)
+        async with client.stream("GET", task.url, timeout=self.timeout) as response:
+            if response.status_code != 200:
+                raise httpx.RequestError(f"HTTP {response.status_code}")
+            with open(task.filepath, "wb") as f:
+                async for chunk in response.aiter_bytes(chunk_size=1024 * 5):
+                    f.write(chunk)
+                    self.progress.update(task_id, advance=len(chunk))
+        logging.debug(f"Downloaded: {task.url} -> {task.filename}")
+
+    def _on_start(self, task: DownloadTask):
+        if self.on_start:
+            self.on_start(task)
+
+    def _on_complete(self, task: DownloadTask):
+        if self.on_complete:
+            self.on_complete(task)
+
+    def _on_error(self, task: DownloadTask, error: Exception):
+        if self.on_error:
+            self.on_error(task, error)
+
+    def _handle_retry(self, task: DownloadTask, task_id: int, attempt: int, error: Exception):
+        self.progress.update(
+            task_id,
+            description=f"[yellow]Retry {attempt}/{self.retries}...",
+        )
+        logging.warning(f"Failed attempt {attempt} for {task.url}: {error}")
+        if attempt == self.retries:
+            self.progress.update(task_id, description="[red]Failed")
+            logging.error(f"Failed: {task.url} -> {task.filename}: {error}")
 
     async def run(self, headers=None):
         """启动下载器，处理队列中的任务。
@@ -188,10 +193,7 @@ class AsyncDownloader:
         """
         async with httpx.AsyncClient(headers=headers, follow_redirects=True) as client:
             with self.progress:
-                workers = [
-                    asyncio.create_task(self.worker(client))
-                    for _ in range(self.max_concurrent)
-                ]
+                workers = [asyncio.create_task(self.worker(client)) for _ in range(self.max_concurrent)]
 
                 # 持续运行直到手动停止或任务完成
                 await self.task_queue.join()
@@ -200,4 +202,3 @@ class AsyncDownloader:
                 for _ in range(self.max_concurrent):
                     await self.task_queue.put(None)
                 await asyncio.gather(*workers)
-
