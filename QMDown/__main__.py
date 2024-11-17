@@ -1,3 +1,3 @@
-from .mian import app
+from .cli import app
 
 app()

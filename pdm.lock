@@ -5,21 +5,10 @@
 groups = ["default"]
 strategy = ["inherit_metadata"]
 lock_version = "4.5.0"
-content_hash = "sha256:6ff800771b2bab3b5b24738afed77f96a7bce1b63c39edeac02791eb9e26d09f"
+content_hash = "sha256:244f6bc5194ec9b74d5c57a7ca25831d50aff815886925cda599810a7e158149"
 
 [[metadata.targets]]
-requires_python = ">=3.9,<3.13"
-
-[[package]]
-name = "aiofiles"
-version = "24.1.0"
-requires_python = ">=3.8"
-summary = "File support for asyncio."
-groups = ["default"]
-files = [
-    {file = "aiofiles-24.1.0-py3-none-any.whl", hash = "sha256:b4ec55f4195e3eb5d7abd1bf7e061763e864dd4954231fb8539a0ef8bb8260e5"},
-    {file = "aiofiles-24.1.0.tar.gz", hash = "sha256:22a075c9e5a3810f0c2e48f3008c94d68c65d763b9b03857924c99e57355166c"},
-]
+requires_python = ">=3.10,<3.13"
 
 [[package]]
 name = "anyio"
