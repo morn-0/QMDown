@@ -2,17 +2,16 @@ import logging
 from pathlib import Path
 from typing import Annotated
 
+import click
 import typer
-from qqmusic_api.song import get_song_urls
-from qqmusic_api.songlist import Songlist
-from rich.prompt import Confirm
-from rich.table import Table
+from qqmusic_api.song import SongFileType
+from rich.logging import RichHandler
 
 from QMDown import __version__, console
-from QMDown.downloader import AsyncDownloader
-from QMDown.utils import cli_coro, singer_to_str
+from QMDown.utils import cli_coro
 
 app = typer.Typer(add_completion=False)
+logger = logging.getLogger("QMDown.main")
 
 
 def handle_version(value: bool):
@@ -21,16 +20,26 @@ def handle_version(value: bool):
         raise typer.Exit()
 
 
+def handle_debug(value: bool):
+    logging.basicConfig(
+        level="DEBUG" if value else "INFO",
+        format="%(message)s",
+        datefmt="[%X]",
+        handlers=[
+            RichHandler(
+                show_path=False,
+                markup=True,
+                rich_tracebacks=True,
+                console=console,
+            )
+        ],
+    )
+
+
 @app.command()
 @cli_coro()
 async def main(
-    id: Annotated[
-        list[int],
-        typer.Argument(
-            help="歌单ID",
-            show_default=False,
-        ),
-    ],
+    url: Annotated[list[str], typer.Argument(help="链接")],
     output_path: Annotated[
         Path,
         typer.Option(
@@ -38,12 +47,37 @@ async def main(
             "--output",
             help="歌曲保存路径。",
             show_default=False,
-            exists=True,
-            dir_okay=True,
-            writable=True,
             resolve_path=True,
         ),
     ] = Path.cwd(),
+    quality: Annotated[
+        str,
+        typer.Option(
+            "--quality",
+            help="下载音质。",
+            click_type=click.Choice(
+                list(SongFileType.__members__.keys()),
+                case_sensitive=False,
+            ),
+        ),
+    ] = SongFileType.MP3_128.name,
+    max_workers: Annotated[
+        int,
+        typer.Option(
+            "--max-workers",
+            help="最大并发下载数。",
+            show_default=False,
+        ),
+    ] = 5,
+    debug: Annotated[
+        bool,
+        typer.Option(
+            "--debug",
+            help="启用调试模式。",
+            show_default=False,
+            callback=handle_debug,
+        ),
+    ] = False,
     version: Annotated[
         bool | None,
         typer.Option(
@@ -56,74 +90,7 @@ async def main(
         ),
     ] = None,
 ):
-    logging.info("解析歌单中...")
-    info_table = Table(
-        title="歌单信息",
-        show_lines=True,
-        expand=True,
-    )
-    info_table.add_column("歌单ID")
-    info_table.add_column("歌单名称")
-    info_table.add_column("歌单创建者")
-    info_table.add_column("歌曲数量")
-
-    songlist_data: list[Songlist] = []
-
-    for songlist_id in set(id):
-        songlist = Songlist(songlist_id)
-        info = await songlist.get_detail()
-        if not info["host_uin"]:
-            logging.info(f"无法找到歌单：[red]{songlist_id}[/red]")
-            continue
-
-        songlist_data.append(songlist)
-        info_table.add_row(
-            str(songlist_id),
-            info["title"],
-            info["host_nick"],
-            str(info["songnum"]),
-        )
-
-    console.print(info_table)
-
-    if not Confirm.ask("是否确认下载歌单？", default=True, console=console):
-        raise typer.Exit()
-
-    logging.info("获取歌曲信息...")
-    song_data = []
-    for songlist in songlist_data:
-        song_data.extend(await songlist.get_song())
-
-    song_data = {song["mid"]: song for song in song_data}
-    mids = list(map(lambda x: x["mid"], song_data.values()))
-
-    info_table = Table(
-        title="获取链接失败",
-        show_lines=False,
-        expand=True,
-    )
-    info_table.add_column("歌曲")
-    info_table.add_column("歌手")
-
-    downloader = AsyncDownloader(output_path)
-
-    with console.status("获取歌曲文件链接..."):
-        urls = await get_song_urls(mids)
-        failed_num = 0
-
-        for mid, url in urls.items():
-            song = song_data[mid]
-            if url:
-                await downloader.add_task(url, song["title"] + ".mp3")
-            else:
-                failed_num += 1
-                info_table.add_row(song["name"], singer_to_str(song["singer"]))
-
-    console.print(info_table)
-    logging.info(f"获取失败歌曲总数：{failed_num}/{len(mids)}")
-    logging.info("开始下载歌曲")
-    await downloader.run()
-    logging.info("下载完成")
+    logger.debug("s")
 
 
 if __name__ == "__main__":
