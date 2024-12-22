@@ -64,7 +64,7 @@ trim = true
 
 [remote.github]
 owner = "luren-dc"
-repo = "QQMusicApi"
+repo = "QMDown"
 
 [git]
 # parse the commits based on https://www.conventionalcommits.org
