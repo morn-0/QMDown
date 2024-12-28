@@ -4,8 +4,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+import anyio
 import httpx
-from rich.console import Console
 from rich.progress import (
     BarColumn,
     Progress,
@@ -14,6 +14,8 @@ from rich.progress import (
     TimeElapsedColumn,
     TimeRemainingColumn,
 )
+
+from QMDown import console
 
 
 @dataclass()
@@ -39,7 +41,7 @@ class AsyncDownloader:
         save_dir: 文件保存目录。
         max_concurrent: 最大并发下载任务数。
         retries: 每个任务的最大重试次数。
-        timeout: 每个请求的超时时间（秒）。
+        timeout: 每个请求的超时时间(秒)。
         on_start: 下载开始时的回调函数。
         on_complete: 下载完成时的回调函数。
         on_error: 下载失败时的回调函数。
@@ -47,21 +49,20 @@ class AsyncDownloader:
 
     def __init__(
         self,
-        save_dir: str | Path = Path.cwd(),
-        max_workers: int = 5,
+        save_dir: str | Path = "downloads",
+        max_concurrent: int = 5,
         retries: int = 3,
         timeout: int = 10,
         on_start: Callable[[DownloadTask], None] | None = None,
         on_complete: Callable[[DownloadTask], None] | None = None,
         on_error: Callable[[DownloadTask, Exception], None] | None = None,
-        console: Console = Console(),
     ):
         self.save_dir = Path(save_dir)
-        self.max_workers = max_workers
+        self.max_concurrent = max_concurrent
         self.retries = retries
         self.timeout = timeout
         self.task_queue = asyncio.Queue()
-        self.semaphore = asyncio.Semaphore(max_workers)
+        self.semaphore = asyncio.Semaphore(max_concurrent)
         self.progress = Progress(
             TextColumn(
                 "[bold blue]{task.fields[filename]}[/] {task.description}",
@@ -90,7 +91,7 @@ class AsyncDownloader:
         logging.debug(f"Task added: {url} -> {task.filename}")
 
     async def worker(self, client: httpx.AsyncClient):
-        """队列工作者，从任务队列中提取并执行下载任务。
+        """队列工作者,从任务队列中提取并执行下载任务。
 
         Args:
             client: 用于发送请求的 HTTP 客户端。
@@ -114,16 +115,14 @@ class AsyncDownloader:
         if self._is_task_skipped(task, task_id):
             return
 
-        for attempt in range(0, self.retries):
+        for attempt in range(1, self.retries + 1):
             async with self.semaphore:
                 try:
                     self._on_start(task)
                     self.progress.start_task(task_id)
 
                     total = await self._fetch_file_size(client, task, task_id)
-                    self.progress.update(task_id, total=total)
-
-                    await self._download_file(client, task, task_id)
+                    await self._download_file(client, task, task_id, total)
 
                     self._on_complete(task)
                     return
@@ -135,7 +134,7 @@ class AsyncDownloader:
     def _initialize_task(self, task: DownloadTask):
         return self.progress.add_task(
             description="",
-            filename=task.filename,
+            filename=task.filename[:8] if len(task.filename) > 8 else task.filename,
             start=False,
         )
 
@@ -154,14 +153,14 @@ class AsyncDownloader:
         self.progress.update(task_id, total=total)
         return total
 
-    async def _download_file(self, client: httpx.AsyncClient, task: DownloadTask, task_id: TaskID):
+    async def _download_file(self, client: httpx.AsyncClient, task: DownloadTask, task_id: TaskID, total: int):
         self.save_dir.mkdir(parents=True, exist_ok=True)
         async with client.stream("GET", task.url, timeout=self.timeout) as response:
             if response.status_code != 200:
                 raise httpx.RequestError(f"HTTP {response.status_code}")
-            with open(task.filepath, "wb") as f:
+            async with await anyio.open_file(task.filepath, "wb") as f:
                 async for chunk in response.aiter_bytes(chunk_size=1024 * 5):
-                    f.write(chunk)
+                    await f.write(chunk)
                     self.progress.update(task_id, advance=len(chunk))
         logging.debug(f"Downloaded: {task.url} -> {task.filename}")
 
@@ -188,19 +187,19 @@ class AsyncDownloader:
             logging.error(f"Failed: {task.url} -> {task.filename}: {error}")
 
     async def run(self, headers=None):
-        """启动下载器，处理队列中的任务。
+        """启动下载器c处理队列中的任务。
 
         Args:
-            headers: 自定义请求头（如 User-Agent）。
+            headers: 自定义请求头(如 User-Agent)
         """
         async with httpx.AsyncClient(headers=headers, follow_redirects=True) as client:
             with self.progress:
-                workers = [asyncio.create_task(self.worker(client)) for _ in range(self.max_workers)]
+                workers = [asyncio.create_task(self.worker(client)) for _ in range(self.max_concurrent)]
 
                 # 持续运行直到手动停止或任务完成
                 await self.task_queue.join()
 
                 # 停止所有工作者
-                for _ in range(self.max_workers):
+                for _ in range(self.max_concurrent):
                     await self.task_queue.put(None)
                 await asyncio.gather(*workers)

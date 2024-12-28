@@ -3,17 +3,6 @@ import signal
 from functools import wraps
 
 
-def singer_to_str(singers: list[dict], sep: str = "&"):
-    """
-    将歌手列表转换为字符串
-
-    Args:
-        singers: 歌手列表
-        sep: 分隔符
-    """
-    return "&".join(map(lambda x: x["name"], singers))
-
-
 def cli_coro(
     signals=(signal.SIGHUP, signal.SIGTERM, signal.SIGINT),
     shutdown_func=None,

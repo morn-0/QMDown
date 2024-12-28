@@ -1,15 +1,18 @@
 <div align="center">
     <a>
-        <img src="https://socialify.git.ci/luren-dc/QMDown/image?description=1&font=Source%20Code%20Pro&language=1&logo=https%3A%2F%2Fy.qq.com%2Fmediastyle%2Fmod%2Fmobile%2Fimg%2Flogo.svg&name=1&pattern=Overlapping%20Hexagons&theme=Auto">
+        <img src="https://socialify.git.ci/luren-dc/QMDown/image?description=1&font=Source%20Code%20Pro&language=1&logo=https%3A%2F%2Fy.qq.com%2Fmediastyle%2Fmod%2Fmobile%2Fimg%2Flogo.svg&name=1&pattern=Overlapping%20Hexagons&theme=Auto"/>
     </a>
     <a href="https://www.python.org">
-        <img src="https://img.shields.io/badge/Python-3.9|3.10|3.11|3.12-blue" alt="Python">
+        <img src="https://img.shields.io/badge/Python-3.10|3.11|3.12-blue" alt="Python"/>
     </a>
     <a href="https://github.com/luren-dc/QMDown?tab=MIT-1-ov-file">
-        <img src="https://img.shields.io/github/license/luren-dc/QMDown" alt="GitHub license">
+        <img src="https://img.shields.io/github/license/luren-dc/QMDown" alt="GitHub license"/>
     </a>
     <a href="https://github.com/luren-dc/QMDown/stargazers">
-        <img src="https://img.shields.io/github/stars/luren-dc/QMDown?color=yellow&label=Github%20Stars" alt="STARS">
+        <img src="https://img.shields.io/github/stars/luren-dc/QMDown?color=yellow&label=Github%20Stars" alt="STARS"/>
+    </a>
+    <a href="https://github.com/astral-sh/uv">
+      <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json" alt="uv"/>
     </a>
 </div>
 
@@ -26,8 +29,38 @@
   - [ ] 歌手
   - [ ] 专辑
   - [x] 歌单
+  - [x] 歌曲
   - [ ] 排行榜
 - 支持下载高品质
+  - [x] 臻品母带 (24Bit 192kHz)
+  - [x] 臻品音质 (16Bit 44.1kHz)
+  - [x] 臻品全景声 (16Bit 44.1kHz)
+  - [x] flac (16Bit 44.1kHz~24Bit 48kHz)
+  - OGG
+    - [x] 640kbps
+    - [x] 320kbps
+    - [x] 192kbps
+    - [x] 96kbps
+  - MP3
+    - [x] 320kbps
+    - [x] 128kbps
+  - AAC(M4A)
+    - [x] 192kbps
+    - [x] 96kbps
+    - [x] 48kbps
+
+## 已支持下载类型
+
+| 类型 | 示例链接                                                                                                               |
+| ---- | ---------------------------------------------------------------------------------------------------------------------- |
+| 歌曲 | `https://y.qq.com/n/ryqq/songDetail/004Ti8rT003TaZ` <br/> `https://i.y.qq.com/v8/playsong.html?songmid=004UMhHW33BWSk` |
+| 歌单 | `https://y.qq.com/n/ryqq/playlist/1374105607` <br/> `https://i.y.qq.com/n2/m/share/details/taoge.html?id=7524170477`   |
+
+## 基本使用
+
+```bash
+QMDown <url>
+```
 
 ## Licence
 
