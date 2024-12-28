@@ -36,33 +36,36 @@ class AsyncDownloader:
     """异步文件下载器。
 
     支持动态任务管理、下载过程中添加 Hook 回调、并发控制。
-
-    Args:
-        save_dir: 文件保存目录。
-        max_concurrent: 最大并发下载任务数。
-        retries: 每个任务的最大重试次数。
-        timeout: 每个请求的超时时间(秒)。
-        on_start: 下载开始时的回调函数。
-        on_complete: 下载完成时的回调函数。
-        on_error: 下载失败时的回调函数。
     """
 
     def __init__(
         self,
         save_dir: str | Path = "downloads",
-        max_concurrent: int = 5,
+        num_workers: int = 8,
+        no_progress: bool = True,
         retries: int = 3,
         timeout: int = 10,
         on_start: Callable[[DownloadTask], None] | None = None,
         on_complete: Callable[[DownloadTask], None] | None = None,
         on_error: Callable[[DownloadTask, Exception], None] | None = None,
     ):
+        """
+        Args:
+            save_dir: 文件保存目录。
+            max_concurrent: 最大并发下载任务数。
+            retries: 每个任务的最大重试次数。
+            timeout: 每个请求的超时时间(秒)。
+            no_progress: 是否显示进度。
+            on_start: 下载开始时的回调函数。
+            on_complete: 下载完成时的回调函数。
+            on_error: 下载失败时的回调函数。
+        """
         self.save_dir = Path(save_dir)
-        self.max_concurrent = max_concurrent
+        self.max_concurrent = num_workers
         self.retries = retries
         self.timeout = timeout
         self.task_queue = asyncio.Queue()
-        self.semaphore = asyncio.Semaphore(max_concurrent)
+        self.semaphore = asyncio.Semaphore(num_workers)
         self.progress = Progress(
             TextColumn(
                 "[bold blue]{task.fields[filename]}[/] {task.description}",
@@ -73,8 +76,9 @@ class AsyncDownloader:
             TimeElapsedColumn(),
             TimeRemainingColumn(),
             console=console,
+            disable=no_progress,
         )
-
+        self.no_progress = no_progress
         self.on_start = on_start
         self.on_complete = on_complete
         self.on_error = on_error
@@ -142,6 +146,8 @@ class AsyncDownloader:
         if task.filepath.exists():
             logging.debug(f"Skipped: {task.url} -> {task.filename}")
             self.progress.update(task_id, description="已存在")
+            if self.no_progress:
+                logging.info(f"[blue]{task.filename}[/] 已存在")
             return True
         return False
 
@@ -193,9 +199,9 @@ class AsyncDownloader:
             headers: 自定义请求头(如 User-Agent)
         """
         async with httpx.AsyncClient(headers=headers, follow_redirects=True) as client:
-            with self.progress:
-                workers = [asyncio.create_task(self.worker(client)) for _ in range(self.max_concurrent)]
 
+            async def _run():
+                workers = [asyncio.create_task(self.worker(client)) for _ in range(self.max_concurrent)]
                 # 持续运行直到手动停止或任务完成
                 await self.task_queue.join()
 
@@ -203,3 +209,12 @@ class AsyncDownloader:
                 for _ in range(self.max_concurrent):
                     await self.task_queue.put(None)
                 await asyncio.gather(*workers)
+
+            if self.no_progress:
+                with console.status("下载歌曲中..."):
+                    await _run()
+            else:
+                with self.progress:
+                    await _run()
+
+            logging.info("下载完成")

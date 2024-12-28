@@ -39,6 +39,11 @@ def handle_debug(value: bool):
     )
 
 
+def handle_no_color(value: bool):
+    if value:
+        console.no_color = True
+
+
 @app.command()
 @cli_coro()
 async def main(
@@ -46,7 +51,6 @@ async def main(
         list[str],
         typer.Argument(
             help="链接。",
-            show_default=False,
         ),
     ],
     output_path: Annotated[
@@ -54,8 +58,7 @@ async def main(
         typer.Option(
             "-o",
             "--output",
-            help="歌曲保存路径。",
-            show_default=False,
+            help="歌曲保存路径",
             resolve_path=True,
         ),
     ] = Path.cwd(),
@@ -63,27 +66,44 @@ async def main(
         str,
         typer.Option(
             "--quality",
-            help="下载音质。",
+            help="下载音质",
             click_type=click.Choice(
                 list(SongFileType.__members__.keys()),
                 case_sensitive=False,
             ),
         ),
     ] = SongFileType.MP3_128.name,
-    max_workers: Annotated[
+    num_workers: Annotated[
         int,
         typer.Option(
-            "--max-workers",
-            help="最大并发下载数。",
-            show_default=False,
+            "-n",
+            "--num-workers",
+            help="最大并发下载数",
         ),
-    ] = 5,
+    ] = 8,
+    no_progress: Annotated[
+        bool,
+        typer.Option(
+            "--no-progress",
+            help="不显示进度条",
+            is_flag=True,
+        ),
+    ] = False,
+    no_color: Annotated[
+        bool,
+        typer.Option(
+            "--no-color",
+            help="不显示颜色",
+            is_flag=True,
+            callback=handle_no_color,
+        ),
+    ] = False,
     debug: Annotated[
         bool,
         typer.Option(
             "--debug",
-            help="启用调试模式。",
-            show_default=False,
+            help="启用调试模式",
+            is_flag=True,
             callback=handle_debug,
         ),
     ] = False,
@@ -92,7 +112,7 @@ async def main(
         typer.Option(
             "--version",
             "-v",
-            help="显示版本信息。",
+            help="显示版本信息",
             is_flag=True,
             is_eager=True,
             callback=handle_version,
@@ -137,7 +157,7 @@ async def main(
     status.stop()
 
     # 开始下载歌曲
-    downloader = AsyncDownloader(save_dir=output_path, max_concurrent=max_workers)
+    downloader = AsyncDownloader(save_dir=output_path, num_workers=num_workers, no_progress=no_progress)
     for mid, url in song_urls.items():
         song = data[mid]
         full_name = f"{song.title} - {song.signer_to_str()}"
