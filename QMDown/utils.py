@@ -1,6 +1,9 @@
 import asyncio
 import signal
 from functools import wraps
+from typing import TypeVar
+
+T = TypeVar("T")
 
 
 def cli_coro(
@@ -21,3 +24,10 @@ def cli_coro(
         return wrapper
 
     return decorator_cli_coro
+
+
+def find_by_attribute(models: list[T], attribute_name: str, value: str) -> T:
+    for model in models:
+        if hasattr(model, attribute_name) and getattr(model, attribute_name) == value:
+            return model
+    raise ValueError(f"{value} not found in {models}")

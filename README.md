@@ -49,7 +49,7 @@
     - [x] 96kbps
     - [x] 48kbps
 
-## 已支持下载类型
+### 已支持下载类型
 
 | 类型 | 示例链接                                                                                                               |
 | ---- | ---------------------------------------------------------------------------------------------------------------------- |
@@ -58,8 +58,25 @@
 
 ## 基本使用
 
-```bash
-QMDown <url>
+```console
+Usage: QMDown [OPTIONS] URLS...
+
+  QQ 音乐解析/下载工具
+
+Arguments:
+  URLS...  链接  [required]
+
+Options:
+  -o, --output PATH               歌曲保存路径  [default:...]
+  --quality [130|120|110|100|90|80|70|60|50|40|30|20|10] 最大下载音质  [default: 50]
+  -n, --num-workers INTEGER       最大并发下载数  [default: 8]
+  --no-progress                   不显示进度条
+  --no-color                      不显示颜色
+  --debug                         启用调试模式
+  -v, --version                   显示版本信息
+  --install-completion            Install completion for the current shell.
+  --show-completion               Show completion for the current shell, to copy it or customize the installation.
+  -h, --help                      Show this message and exit.
 ```
 
 ## Licence

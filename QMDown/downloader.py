@@ -145,9 +145,8 @@ class AsyncDownloader:
     def _is_task_skipped(self, task: DownloadTask, task_id: TaskID) -> bool:
         if task.filepath.exists():
             logging.debug(f"Skipped: {task.url} -> {task.filename}")
-            self.progress.update(task_id, description="已存在")
-            if self.no_progress:
-                logging.info(f"[blue]{task.filename}[/] 已存在")
+            self.progress.remove_task(task_id)
+            logging.info(f"[blue]{task.filename}[/] [red]已存在")
             return True
         return False
 

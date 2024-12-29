@@ -4,16 +4,17 @@ from typing import Annotated
 
 import click
 import typer
-from qqmusic_api.song import SongFileType, get_song_urls
 from rich.logging import RichHandler
 
 from QMDown import __version__, console
 from QMDown.downloader import AsyncDownloader
 from QMDown.extractor import SongExtractor, SonglistExtractor
+from QMDown.fetcher import UrlFetcher
 from QMDown.model import Song
+from QMDown.quality import SongFileTypePriority
 from QMDown.utils import cli_coro
 
-app = typer.Typer()
+app = typer.Typer(context_settings={"help_option_names": ["-h", "--help"]}, rich_markup_mode=None, no_args_is_help=True)
 logger = logging.getLogger("QMDown.main")
 
 
@@ -50,7 +51,7 @@ async def main(
     urls: Annotated[
         list[str],
         typer.Argument(
-            help="链接。",
+            help="链接",
         ),
     ],
     output_path: Annotated[
@@ -62,17 +63,16 @@ async def main(
             resolve_path=True,
         ),
     ] = Path.cwd(),
-    quality: Annotated[
+    max_quality: Annotated[
         str,
         typer.Option(
             "--quality",
-            help="下载音质",
+            help="最大下载音质",
             click_type=click.Choice(
-                list(SongFileType.__members__.keys()),
-                case_sensitive=False,
+                [str(_.value) for _ in SongFileTypePriority],
             ),
         ),
-    ] = SongFileType.MP3_128.name,
+    ] = str(SongFileTypePriority.MP3_128.value),
     num_workers: Annotated[
         int,
         typer.Option(
@@ -119,6 +119,9 @@ async def main(
         ),
     ] = None,
 ):
+    """
+    QQ 音乐解析/下载工具
+    """
     # 初始化提取器
     extractors = [SongExtractor(), SonglistExtractor()]
 
@@ -150,21 +153,18 @@ async def main(
     # 获取歌曲链接
     status.update(f"获取歌曲链接([red]{len(data)}[/])...")
 
-    file_type = SongFileType[quality]
-    song_urls = await get_song_urls(list(data.keys()), file_type=file_type)
+    song_urls = await UrlFetcher(priority=int(max_quality)).fetch(list(data.values()))
 
-    logger.info(f"获取歌曲链接成功: [red]{len(list(filter(None,song_urls.values())))}/{len(data)}")
     status.stop()
+
+    if len(song_urls) == 0:
+        raise typer.Exit()
 
     # 开始下载歌曲
     downloader = AsyncDownloader(save_dir=output_path, num_workers=num_workers, no_progress=no_progress)
-    for mid, url in song_urls.items():
-        song = data[mid]
-        full_name = f"{song.title} - {song.signer_to_str()}"
-        if url:
-            await downloader.add_task(url=url, filename=full_name + file_type.e)
-        else:
-            logger.warning(f"[red]获取歌曲链接失败:[/] {full_name}")
+    for _url in song_urls:
+        song = data[_url.mid]
+        await downloader.add_task(url=_url.url.__str__(), filename=song.get_full_name() + _url.quality.e)
 
     await downloader.run()
 
