@@ -3,6 +3,8 @@ import signal
 from functools import wraps
 from typing import TypeVar
 
+import httpx
+
 T = TypeVar("T")
 
 
@@ -31,3 +33,9 @@ def find_by_attribute(models: list[T], attribute_name: str, value: str) -> T:
         if hasattr(model, attribute_name) and getattr(model, attribute_name) == value:
             return model
     raise ValueError(f"{value} not found in {models}")
+
+
+async def get_real_url(url: str) -> str | None:
+    async with httpx.AsyncClient(verify=False) as client:
+        resp = await client.get(url)
+        return resp.headers.get("Location", None)

@@ -20,5 +20,4 @@ class SonglistExtractor(BatchExtractor):
         if data:
             self.report_info(f"获取成功: {id} {info['title']} - {info['creator']['nick']}")
             return [Song.model_validate(song) for song in data]
-        self.report_error(f"获取失败:{url}")
         return None

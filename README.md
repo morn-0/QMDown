@@ -27,7 +27,7 @@
 
 - 支持下载
   - [ ] 歌手
-  - [ ] 专辑
+  - [x] 专辑
   - [x] 歌单
   - [x] 歌曲
   - [ ] 排行榜
@@ -51,10 +51,12 @@
 
 ### 已支持下载类型
 
-| 类型 | 示例链接                                                                                                               |
-| ---- | ---------------------------------------------------------------------------------------------------------------------- |
-| 歌曲 | `https://y.qq.com/n/ryqq/songDetail/004Ti8rT003TaZ` <br/> `https://i.y.qq.com/v8/playsong.html?songmid=004UMhHW33BWSk` |
-| 歌单 | `https://y.qq.com/n/ryqq/playlist/1374105607` <br/> `https://i.y.qq.com/n2/m/share/details/taoge.html?id=7524170477`   |
+| 类型 | 示例链接                                                                                                                       |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------ |
+| base | `https://c6.y.qq.com/base/fcgi-bin/u?__=jXIuFz8tBzpA`                                                                          |
+| 歌曲 | `https://y.qq.com/n/ryqq/songDetail/004Ti8rT003TaZ` <br/> `https://i.y.qq.com/v8/playsong.html?songmid=004UMhHW33BWSk`         |
+| 歌单 | `https://y.qq.com/n/ryqq/playlist/1374105607` <br/> `https://i.y.qq.com/n2/m/share/details/taoge.html?id=7524170477`           |
+| 专辑 | `https://y.qq.com/n/ryqq/albumDetail/003dYC933CfoSi` <br/> `https://i.y.qq.com/n2/m/share/details/album.html?albumId=50967596` |
 
 ## 基本使用
 

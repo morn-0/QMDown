@@ -16,7 +16,7 @@ class SongExtractor(SingleExtractor):
         id = self._match_id(url)
         data = await song.query_song([id])
         if data:
-            self.report_info(f"获取成功: {id}")
-            return Song.model_validate(data[0])
-        self.report_error(f"获取失败: {url}")
+            _song = Song.model_validate(data[0])
+            self.report_info(f"获取成功: {id} {_song.get_full_name()}")
+            return _song
         return None

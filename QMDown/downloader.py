@@ -1,6 +1,5 @@
 import asyncio
 import logging
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -45,9 +44,6 @@ class AsyncDownloader:
         no_progress: bool = True,
         retries: int = 3,
         timeout: int = 10,
-        on_start: Callable[[DownloadTask], None] | None = None,
-        on_complete: Callable[[DownloadTask], None] | None = None,
-        on_error: Callable[[DownloadTask, Exception], None] | None = None,
     ):
         """
         Args:
@@ -79,9 +75,6 @@ class AsyncDownloader:
             disable=no_progress,
         )
         self.no_progress = no_progress
-        self.on_start = on_start
-        self.on_complete = on_complete
-        self.on_error = on_error
 
     async def add_task(self, url: str, filename: str):
         """向队列中添加一个下载任务。
@@ -122,18 +115,14 @@ class AsyncDownloader:
         for attempt in range(1, self.retries + 1):
             async with self.semaphore:
                 try:
-                    self._on_start(task)
                     self.progress.start_task(task_id)
 
                     total = await self._fetch_file_size(client, task, task_id)
                     await self._download_file(client, task, task_id, total)
 
-                    self._on_complete(task)
                     return
                 except Exception as e:
                     self._handle_retry(task, task_id, attempt, e)
-                    if attempt == self.retries:
-                        self._on_error(task, e)
 
     def _initialize_task(self, task: DownloadTask):
         return self.progress.add_task(
@@ -168,18 +157,6 @@ class AsyncDownloader:
                     await f.write(chunk)
                     self.progress.update(task_id, advance=len(chunk))
         logging.debug(f"Downloaded: {task.url} -> {task.filename}")
-
-    def _on_start(self, task: DownloadTask):
-        if self.on_start:
-            self.on_start(task)
-
-    def _on_complete(self, task: DownloadTask):
-        if self.on_complete:
-            self.on_complete(task)
-
-    def _on_error(self, task: DownloadTask, error: Exception):
-        if self.on_error:
-            self.on_error(task, error)
 
     def _handle_retry(self, task: DownloadTask, task_id: TaskID, attempt: int, error: Exception):
         self.progress.update(
