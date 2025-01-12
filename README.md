@@ -11,12 +11,18 @@
     <a href="https://github.com/luren-dc/QMDown/stargazers">
         <img src="https://img.shields.io/github/stars/luren-dc/QMDown?color=yellow&label=Github%20Stars" alt="STARS"/>
     </a>
+    <a href="https://gitmoji.dev"><img alt="Gitmoji" src="https://img.shields.io/badge/gitmoji-%20😜%20😍-FFDD67?style=flat-square"></a>
     <a href="https://github.com/astral-sh/uv">
       <img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json" alt="uv"/>
     </a>
 </div>
 
 ---
+
+**欢迎向本项目提出[Issues](https://github.com/luren-dc/QMDown/issues),贡献[Pull Requests](https://github.com/luren-dc/QMDown/pulls)**
+
+> [!WARNING] 
+> **请勿在公开场合宣传本软件**
 
 > [!IMPORTANT]
 > 本仓库的所有内容仅供学习和参考之用，禁止用于商业用途
@@ -25,6 +31,12 @@
 
 ## 特色
 
+- 支持登录
+  - [x] Cookies
+  - [x] 二维码
+    - [x] QQ
+    - [x] WX
+  - [ ] 手机号
 - 支持下载
   - [ ] 歌手
   - [x] 专辑
@@ -61,25 +73,58 @@
 ## 基本使用
 
 ```console
-Usage: QMDown [OPTIONS] URLS...
-
-  QQ 音乐解析/下载工具
-
-Arguments:
-  URLS...  链接  [required]
-
-Options:
-  -o, --output PATH               歌曲保存路径  [default:...]
-  --quality [130|120|110|100|90|80|70|60|50|40|30|20|10] 最大下载音质  [default: 50]
-  -n, --num-workers INTEGER       最大并发下载数  [default: 8]
-  --no-progress                   不显示进度条
-  --no-color                      不显示颜色
-  --debug                         启用调试模式
-  -v, --version                   显示版本信息
-  --install-completion            Install completion for the current shell.
-  --show-completion               Show completion for the current shell, to copy it or customize the installation.
-  -h, --help                      Show this message and exit.
+                                                                                                                    
+ Usage: QMDown [OPTIONS] URLS...                                                                                    
+                                                                                                                    
+ QQ 音乐解析/下载工具                                                                                               
+                                                                                                                    
+╭─ Arguments ──────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ *    urls      URLS...  链接 [default: None] [required]                                                          │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ --no-progress            不显示进度条                                                                            │
+│ --no-color               不显示颜色                                                                              │
+│ --debug                  启用调试模式                                                                            │
+│ --version      -v        显示版本信息                                                                            │
+│ --help         -h        Show this message and exit.                                                             │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Download 下载 ──────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ --output       -o      DIRECTORY                                    歌曲保存路径                                 │
+│                                                                     [default: /home/luren/Python/QMDown]         │
+│ --num-workers  -n      INTEGER RANGE [x>=1]                         最大并发下载数 [default: 8]                  │
+│ --quality      -q      [130|120|110|100|90|80|70|60|50|40|30|20|10  最大下载音质 [default: 50]                   │
+│                        ]                                                                                         │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Login 登录 ─────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ --cookies   -c      musicid:musickey  QQ 音乐 Cookie                                                             │
+│ --login-qr          [qq|wx]           二维码登录                                                                 │
+│ --load              FILE              从文件读取 Cookies 信息                                                    │
+│ --save              FILE              保存 Cookies 信息到文件                                                    │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
+
+### 音质说明
+
+<details>
+<summary>点击展开</summary>
+
+| 音频格式 | code |
+| -------- | ---- |
+| MASTER   | 130  |
+| ATMOS_2  | 120  |
+| ATMOS_51 | 110  |
+| FLAC     | 100  |
+| OGG_640  | 90   |
+| OGG_320  | 80   |
+| MP3_320  | 70   |
+| OGG_192  | 60   |
+| MP3_128  | 50   |
+| OGG_96   | 40   |
+| ACC_192  | 30   |
+| ACC_96   | 20   |
+| ACC_48   | 10   |
+
+</details>
 
 ## Licence
 

@@ -1,26 +1,22 @@
-from pydantic import BaseModel, ConfigDict, HttpUrl
+from pydantic import BaseModel, HttpUrl
 from qqmusic_api.song import SongFileType
 
 
-class MusicModel(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-
-class Singer(MusicModel):
+class Singer(BaseModel):
     id: int
     mid: str
     name: str
     title: str
 
 
-class Album(MusicModel):
+class Album(BaseModel):
     id: int
     mid: str
     name: str
     title: str
 
 
-class Song(MusicModel):
+class Song(BaseModel):
     id: int
     mid: str
     name: str
@@ -28,10 +24,10 @@ class Song(MusicModel):
     singer: list[Singer]
     album: Album
 
-    def singer_to_str(self, sep: str = ","):
+    def singer_to_str(self, sep: str = ",") -> str:
         return sep.join([s.title for s in self.singer])
 
-    def get_full_name(self, format: str = "{name} - {singer}", sep: str = ","):
+    def get_full_name(self, format: str = "{name} - {singer}", sep: str = ",") -> str:
         if "{name}" not in format:
             raise ValueError("format must contain {name}")
         if "{singer}" not in format:
@@ -39,8 +35,8 @@ class Song(MusicModel):
         return format.format(name=self.name, singer=self.singer_to_str(sep=sep))
 
 
-class SongUrl(MusicModel):
+class SongUrl(BaseModel):
     id: int
     mid: str
     url: HttpUrl
-    quality: SongFileType
+    type: SongFileType
