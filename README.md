@@ -21,13 +21,26 @@
 
 **欢迎向本项目提出[Issues](https://github.com/luren-dc/QMDown/issues),贡献[Pull Requests](https://github.com/luren-dc/QMDown/pulls)**
 
-> [!WARNING] 
+> [!WARNING]
 > **请勿在公开场合宣传本软件**
 
 > [!IMPORTANT]
 > 本仓库的所有内容仅供学习和参考之用，禁止用于商业用途
 >
 > **音乐平台不易，请尊重版权，支持正版。**
+
+## 安装
+
+### 体验 main 分支最新特性
+
+```bash
+# 通过 pip
+pip install git+https://github.com/luren-dc/QMDown@main
+# 通过 pipx
+pipx install git+https://github.com/luren-dc/QMDown@main
+# 通过 uv
+uv tool install git+https://github.com/luren-dc/QMDown.git@main
+```
 
 ## 特色
 
@@ -73,11 +86,11 @@
 ## 基本使用
 
 ```console
-                                                                                                                    
- Usage: QMDown [OPTIONS] URLS...                                                                                    
-                                                                                                                    
- QQ 音乐解析/下载工具                                                                                               
-                                                                                                                    
+
+ Usage: QMDown [OPTIONS] URLS...
+
+ QQ 音乐解析/下载工具
+
 ╭─ Arguments ──────────────────────────────────────────────────────────────────────────────────────────────────────╮
 │ *    urls      URLS...  链接 [default: None] [required]                                                          │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
