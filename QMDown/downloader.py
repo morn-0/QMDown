@@ -169,7 +169,7 @@ class AsyncDownloader:
             logging.error(f"Failed: {task.url} -> {task.filename}: {error}")
 
     async def run(self, headers=None):
-        """启动下载器c处理队列中的任务。
+        """启动下载器处理队列中的任务。
 
         Args:
             headers: 自定义请求头(如 User-Agent)
