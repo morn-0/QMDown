@@ -1,3 +1,9 @@
-from .cli import app
+from QMDown.cli import app
 
-app(prog_name="QMDown")
+
+def main():
+    app(prog_name="QMDown")
+
+
+if __name__ == "__main__":
+    main()

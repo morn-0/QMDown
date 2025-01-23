@@ -33,14 +33,12 @@ def cli_coro(
     return decorator_cli_coro
 
 
-def find_by_attribute(models: list[T], attribute_name: str, value: str) -> T:
-    for model in models:
-        if hasattr(model, attribute_name) and getattr(model, attribute_name) == value:
-            return model
-    raise ValueError(f"{value} not found in {models}")
-
-
 async def get_real_url(url: str) -> str | None:
+    """获取跳转后的URL.
+
+    Args:
+        url: URL.
+    """
     async with httpx.AsyncClient(verify=False) as client:
         resp = await client.get(url)
         return resp.headers.get("Location", None)
