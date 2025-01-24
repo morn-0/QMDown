@@ -31,7 +31,6 @@ class ProgressManager(metaclass=Singleton):
     def __init__(self) -> None:
         self._download_progress = Progress(
             *self.DEFAULT_COLUMNS.values(),
-            transient=False,
             expand=True,
             console=console,
         )
@@ -52,6 +51,7 @@ class ProgressManager(metaclass=Singleton):
                 Panel(self._download_progress),
             ),
             console=console,
+            transient=True,
         )
 
         self._progress_lock = Lock()

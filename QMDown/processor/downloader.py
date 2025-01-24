@@ -82,7 +82,7 @@ class AsyncDownloader:
                                 visible=True,
                             )
                     await self.progress.update(task_id, visible=False)
-                    logging.info(f"[green][ 完成 ] [blue]{full_path.name}")
+                    logging.info(f"[blue][完成][/] {full_path.name}")
 
     async def add_task(self, url: str, file_name: str, file_suffix: str):
         """添加下载任务.
@@ -99,7 +99,7 @@ class AsyncDownloader:
             full_path = self.save_dir / file_path
 
             if not self.overwrite and full_path.exists():
-                logging.info(f"[green][ 跳过 ] [blue]{file_name}")
+                logging.info(f"[blue][跳过][/] {file_name}")
             else:
                 task_id = await self.progress.add_task(
                     description=f"[  {file_suffix.replace('.', '')}  ]:",
@@ -117,7 +117,6 @@ class AsyncDownloader:
         if self.no_progress:
             with console.status("下载歌曲中..."):
                 await asyncio.gather(*self.download_tasks)
-            logging.info("完成")
         else:
             with self.progress:
                 await asyncio.gather(*self.download_tasks)
