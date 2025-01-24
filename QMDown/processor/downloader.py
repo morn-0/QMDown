@@ -22,6 +22,7 @@ class AsyncDownloader:
         num_workers: int = 3,
         no_progress: bool = False,
         timeout: int = 10,
+        overwrite: bool = False,
     ):
         """
         Args:
@@ -29,6 +30,7 @@ class AsyncDownloader:
             max_concurrent: 最大并发下载任务数.
             timeout: 每个请求的超时时间(秒).
             no_progress: 是否显示进度.
+            overwrite: 是否强制覆盖已下载文件.
         """
         self.save_dir = Path(save_dir)
         self.max_concurrent = num_workers
@@ -37,6 +39,7 @@ class AsyncDownloader:
         self.download_tasks = []
         self.progress = ProgressManager()
         self.no_progress = no_progress
+        self.overwrite = overwrite
 
     @retry(
         stop=stop_after_attempt(3),
@@ -95,7 +98,7 @@ class AsyncDownloader:
             # 文件全路径
             full_path = self.save_dir / file_path
 
-            if full_path.exists():
+            if not self.overwrite and full_path.exists():
                 logging.info(f"[green][ 跳过 ] [blue]{file_name}")
             else:
                 task_id = await self.progress.add_task(
@@ -108,6 +111,8 @@ class AsyncDownloader:
 
     async def execute_tasks(self):
         """执行所有下载任务"""
+        if len(self.download_tasks) == 0:
+            return
         logging.info(f"开始下载歌曲 总共:{len(self.download_tasks)}")
         if self.no_progress:
             with console.status("下载歌曲中..."):

@@ -93,6 +93,15 @@ async def cli(  # noqa: C901
             rich_help_panel="[blue]Download [green]下载",
         ),
     ] = str(SongFileTypePriority.MP3_128.value),
+    overwrite: Annotated[
+        bool,
+        typer.Option(
+            "-w",
+            "--overwrite",
+            help="强制覆盖已下载文件",
+            rich_help_panel="[blue]Download [green]下载",
+        ),
+    ] = False,
     cookies: Annotated[
         str | None,
         typer.Option(
@@ -229,7 +238,13 @@ async def cli(  # noqa: C901
         raise typer.Exit()
 
     # 开始下载歌曲
-    downloader = AsyncDownloader(save_dir=output_path, num_workers=num_workers, no_progress=no_progress)
+    downloader = AsyncDownloader(
+        save_dir=output_path,
+        num_workers=num_workers,
+        no_progress=no_progress,
+        overwrite=overwrite,
+    )
+
     for _url in song_urls:
         song = data[_url.mid]
         await downloader.add_task(url=_url.url.__str__(), file_name=song.get_full_name(), file_suffix=_url.type.e)
