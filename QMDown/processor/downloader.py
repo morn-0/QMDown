@@ -17,6 +17,7 @@ from rich.progress import (
     TransferSpeedColumn,
 )
 from rich.table import Column
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from QMDown import console
 
@@ -71,23 +72,27 @@ class AsyncDownloader:
         self.overall_task_id = self.overall_progress.add_task("下载中", visible=False)
         self.no_progress = no_progress
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type(httpx.RequestError),
+    )
     async def _fetch_file_size(self, client: httpx.AsyncClient, url: str) -> int:
         try:
             response = await client.head(url)
             response.raise_for_status()
             return int(response.headers.get("Content-Length", 0))
+        except httpx.RequestError:
+            raise
         except Exception:
             return 0
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type(httpx.RequestError),
+    )
     async def download_file(self, task_id: TaskID, url: str, full_path: Path):
-        """
-        下载文件
-
-        Args:
-            task_id: 任务 ID
-            urls: 文件 URL
-            full_path: 保存路径
-        """
         async with self.semaphore:
             self.save_dir.mkdir(parents=True, exist_ok=True)
 
@@ -107,13 +112,9 @@ class AsyncDownloader:
                                 total=content_length,
                                 visible=True,
                             )
-
-                        self.progress.update(
-                            task_id,
-                            visible=False,
-                        )
-                        self.overall_progress.update(self.overall_task_id, advance=1)
-                        logging.info(f"[green][ 完成 ] [blue]{full_path.name}")
+                    self.progress.update(task_id, visible=False)
+                    self.overall_progress.update(self.overall_task_id, advance=1)
+                    logging.info(f"[green][ 完成 ] [blue]{full_path.name}")
 
     async def add_task(self, url: str, file_name: str, file_suffix: str):
         """添加下载任务.
