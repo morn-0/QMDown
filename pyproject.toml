@@ -35,6 +35,9 @@ path = "QMDown/__init__.py"
 [tool.hatch.build.targets.wheel]
 packages = ["QMDown"]
 
+[tool.hatch.build.targets.sdist]
+include = ["/QMDown", "/tests", "LISENCE", "README.md"]
+
 [tool.commitizen]
 name = "cz_gitmoji"
 

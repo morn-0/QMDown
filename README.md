@@ -31,6 +31,17 @@
 
 ## 安装
 
+### pip/pipx/uv 安装
+
+```bash
+# 通过 pip
+pip install QMDown
+# 使用 pipx
+pipx install QMDown
+# 或者使用 uv
+uv tool install QMDown
+```
+
 ### 体验 main 分支最新特性
 
 ```bash
