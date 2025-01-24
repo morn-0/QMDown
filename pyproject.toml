@@ -58,6 +58,4 @@ extend-select = ["Q", "RUF", "C90", "UP", "I", "ASYNC", "C4", "FURB", "R"]
 pydocstyle = { convention = "google" }
 
 [dependency-groups]
-dev = [
-    "pyinstaller>=6.11.1",
-]
+dev = []
