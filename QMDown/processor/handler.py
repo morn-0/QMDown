@@ -15,7 +15,7 @@ from qqmusic_api.user import User
 from QMDown import console
 from QMDown.model import Song, SongUrl
 from QMDown.utils.priority import get_priority
-from QMDown.utils.utils import print_ascii
+from QMDown.utils.utils import show_qrcode
 
 
 async def handle_login(  # noqa: C901
@@ -41,7 +41,7 @@ async def handle_login(  # noqa: C901
             with console.status("获取二维码中...") as status:
                 qrcode = BytesIO(await login.get_qrcode())
                 status.stop()
-                print_ascii(qrcode)
+                show_qrcode(qrcode)
                 status.update(f"[red]请使用[blue] {login_type.upper()} [red]扫描二维码登录")
                 status.start()
                 while True:
