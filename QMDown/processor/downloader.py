@@ -1,43 +1,20 @@
 import asyncio
 import logging
 from pathlib import Path
-from typing import ClassVar
 
 import anyio
 import httpx
-from rich.console import Group
-from rich.live import Live
-from rich.panel import Panel
 from rich.progress import (
-    BarColumn,
-    DownloadColumn,
-    Progress,
     TaskID,
-    TextColumn,
-    TransferSpeedColumn,
 )
-from rich.table import Column
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from QMDown import console
+from QMDown.utils.progress import ProgressManager
 
 
 class AsyncDownloader:
-    """异步文件下载器。
-
-    支持动态任务管理、下载过程中添加 Hook 回调、并发控制。
-    """
-
-    DEFAULT_COLUMNS: ClassVar = {
-        "description": TextColumn(
-            "{task.description}[bold blue]{task.fields[filename]}", table_column=Column(ratio=2, min_width=10)
-        ),
-        "bar": BarColumn(bar_width=None, table_column=Column(ratio=3)),
-        "percentage": TextColumn("[progress.percentage]{task.percentage:>4.1f}%"),
-        "•": "•",
-        "filesize": DownloadColumn(),
-        "speed": TransferSpeedColumn(),
-    }
+    """异步文件下载器"""
 
     def __init__(
         self,
@@ -58,24 +35,13 @@ class AsyncDownloader:
         self.timeout = timeout
         self.semaphore = asyncio.Semaphore(num_workers)
         self.download_tasks = []
-        self.progress = Progress(
-            *self.DEFAULT_COLUMNS.values(),
-            transient=False,
-            expand=True,
-            console=console,
-        )
-        self.overall_progress = Progress(
-            TextColumn("[green]{task.description} [blue]{task.completed}[/]/[blue]{task.total}"),
-            BarColumn(bar_width=None),
-            expand=True,
-        )
-        self.overall_task_id = self.overall_progress.add_task("下载中", visible=False)
+        self.progress = ProgressManager()
         self.no_progress = no_progress
 
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type(httpx.RequestError),
+        retry=retry_if_exception_type((httpx.RequestError, httpx.ReadTimeout, httpx.ConnectTimeout)),
     )
     async def _fetch_file_size(self, client: httpx.AsyncClient, url: str) -> int:
         try:
@@ -90,7 +56,7 @@ class AsyncDownloader:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type(httpx.RequestError),
+        retry=retry_if_exception_type((httpx.RequestError, httpx.ReadTimeout, httpx.ConnectTimeout)),
     )
     async def download_file(self, task_id: TaskID, url: str, full_path: Path):
         async with self.semaphore:
@@ -106,14 +72,13 @@ class AsyncDownloader:
                     async with await anyio.open_file(full_path, "wb") as f:
                         async for chunk in response.aiter_bytes():
                             await f.write(chunk)
-                            self.progress.update(
+                            await self.progress.update(
                                 task_id,
                                 advance=len(chunk),
                                 total=content_length,
                                 visible=True,
                             )
-                    self.progress.update(task_id, visible=False)
-                    self.overall_progress.update(self.overall_task_id, advance=1)
+                    await self.progress.update(task_id, visible=False)
                     logging.info(f"[green][ 完成 ] [blue]{full_path.name}")
 
     async def add_task(self, url: str, file_name: str, file_suffix: str):
@@ -133,7 +98,7 @@ class AsyncDownloader:
             if full_path.exists():
                 logging.info(f"[green][ 跳过 ] [blue]{file_name}")
             else:
-                task_id = self.progress.add_task(
+                task_id = await self.progress.add_task(
                     description=f"[  {file_suffix.replace('.', '')}  ]:",
                     filename=file_name,
                     visible=False,
@@ -147,10 +112,8 @@ class AsyncDownloader:
         if self.no_progress:
             with console.status("下载歌曲中..."):
                 await asyncio.gather(*self.download_tasks)
-            logging.info("下载完成")
+            logging.info("完成")
         else:
-            self.overall_progress.update(self.overall_task_id, total=len(self.download_tasks), visible=True)
-            with Live(Group(self.overall_progress, Panel(self.progress)), console=console):
+            with self.progress:
                 await asyncio.gather(*self.download_tasks)
-            self.overall_progress.update(self.overall_task_id, description="下载完成")
         self.download_tasks.clear()
