@@ -24,6 +24,50 @@ jobs:
         uses: orhun/git-cliff-action@v4
         with:
           args: -vv --unreleased --strip all
+  
+  build-executables:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+      - name: Install the project
+        run:
+          uv sync --all-extras --dev
+      - name: Build executables
+        run: |
+          uv run build.py
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.dist_name }}
+          path: ${{ env.dist_name }}
+  
+  publish:
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Set up Python
+        run: uv python install
+      - name: Install the project
+        run: uv sync
+      - name: Build and publish
+        run: |
+          uv build
+          uv publish --trusted-publishing automatic
 
   release:
     runs-on: ubuntu-latest
@@ -31,6 +75,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: QMDown*
+          merge-multiple: true
       - name: Get version
         run: echo "PACKAGE_VERSION=$(grep '__version__' QMDown/__init__.py | awk -F'\"' '{print $2}')" >> $GITHUB_ENV
       - name: Release
@@ -38,4 +88,5 @@ jobs:
         with:
           body: ${{ needs.generate-release-body.outputs.release_body }}
           tag_name: v${{ env.PACKAGE_VERSION }}
-          draft: true
+          files: |
+            dist/*
