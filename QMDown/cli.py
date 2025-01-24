@@ -12,10 +12,11 @@ from QMDown.extractor import AlbumExtractor, SongExtractor, SonglistExtractor
 from QMDown.model import Song
 from QMDown.processor.downloader import AsyncDownloader
 from QMDown.processor.handler import handle_login, handle_song_urls
+from QMDown.utils.async_typer import AsyncTyper
 from QMDown.utils.priority import SongFileTypePriority
-from QMDown.utils.utils import cli_coro, get_real_url
+from QMDown.utils.utils import get_real_url
 
-app = typer.Typer(
+app = AsyncTyper(
     context_settings={"help_option_names": ["-h", "--help"]},
     add_completion=False,
     invoke_without_command=True,
@@ -52,7 +53,6 @@ def parse_cookies(value: str | None) -> Credential | None:
 
 
 @app.command()
-@cli_coro()
 async def cli(  # noqa: C901
     urls: Annotated[
         list[str],

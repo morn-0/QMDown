@@ -106,7 +106,7 @@ async def handle_login(  # noqa: C901
 
         user = User(euin=credential.encrypt_uin, credential=credential)
         user_info = (await user.get_homepage())["Info"]["BaseInfo"]
-        logging.info(f"[Cookies] euin: {user_info['EncryptedUin']} name: [red]{user_info['Name']}")
+        logging.info(f"[blue][Cookies][/] 当前登录账号: [red bold]{user_info['Name']}({credential.musicid}) ")
 
         return credential
 

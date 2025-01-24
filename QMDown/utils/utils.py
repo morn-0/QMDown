@@ -1,48 +1,11 @@
-import asyncio
 import logging
-import signal
 import sys
-from collections.abc import Callable, Sequence
-from functools import wraps
 from typing import IO, TextIO
 
 import httpx
 from PIL import Image
 from PIL._typing import StrOrBytesPath
 from qrcode import QRCode
-
-
-def cli_coro(
-    signals: Sequence[int] | None = None,
-    shutdown_func: Callable[[int, asyncio.AbstractEventLoop], None] | None = None,
-):
-    """Decorator function that allows defining coroutines with click."""
-    if signals is None:
-        # 根据平台设置默认信号
-        if sys.platform == "win32":
-            signals = (signal.SIGINT,)  # Windows通常支持SIGINT
-        else:
-            signals = (signal.SIGHUP, signal.SIGTERM, signal.SIGINT)
-
-    def decorator_cli_coro(f):
-        @wraps(f)
-        def wrapper(*args, **kwargs):
-            loop = asyncio.get_event_loop()
-            if shutdown_func:
-                for ss in signals:
-                    try:
-                        loop.add_signal_handler(ss, shutdown_func, ss, loop)
-                    except NotImplementedError:
-                        # 平台不支持该信号c静默跳过
-                        pass
-                    except RuntimeError as e:
-                        # 处理其他可能的运行时错误)如信号无效)
-                        logging.warning(f"Could not register signal {ss}: {e}")
-            return loop.run_until_complete(f(*args, **kwargs))
-
-        return wrapper
-
-    return decorator_cli_coro
 
 
 async def get_real_url(url: str) -> str | None:
