@@ -8,9 +8,12 @@ import anyio
 import typer
 from pydantic import HttpUrl
 from qqmusic_api import Credential
+from qqmusic_api.login import httpx
 from qqmusic_api.login_utils import PhoneLogin, PhoneLoginEvents, QQLogin, QrCodeLoginEvents, WXLogin
+from qqmusic_api.lyric import get_lyric
 from qqmusic_api.song import get_song_urls
 from qqmusic_api.user import User
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from QMDown import console
 from QMDown.model import Song, SongUrl
@@ -119,8 +122,9 @@ async def handle_song_urls(
     credential: Credential | None,
 ):
     qualities = get_priority(int(max_quality))
-    mids = [song.mid for song in data.values()]
+    all_mids = [song.mid for song in data.values()]
     song_urls: list[SongUrl] = []
+    mids = all_mids.copy()
     for _quality in qualities:
         if len(mids) == 0:
             break
@@ -131,8 +135,43 @@ async def handle_song_urls(
             pass
         mids = list(filter(lambda mid: not _urls[mid], _urls))
         [_urls.pop(mid, None) for mid in mids]
-        logging.info(f"[blue][{_quality.name}]:[/] 获取成功 {len(_urls)}")
         song_urls.extend(
             [SongUrl(id=data[mid].id, mid=mid, url=HttpUrl(url), type=_quality) for mid, url in _urls.items() if url]
         )
-    return song_urls, mids
+        logging.info(f"[blue][{_quality.name}]:[/] 获取成功数量: {len(_urls)}")
+    return song_urls, [mid for mid in all_mids if mid not in mids], mids
+
+
+async def handle_lyric(
+    data: dict[str, Song],
+    save_dir: str | Path = ".",
+    num_workers: int = 3,
+    overwrite: bool = False,
+    trans: bool = False,
+    roma: bool = False,
+    qrc: bool = False,
+):
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type((httpx.RequestError, httpx.ReadTimeout, httpx.ConnectTimeout)),
+    )
+    async def download_lyric(mid: str):
+        song = data[mid]
+        lyric_path = song.get_full_name() + ".lrc"
+        full_path = Path(save_dir) / lyric_path
+
+        if not overwrite and full_path.exists():
+            logging.info(f"[blue][跳过][/] {lyric_path}")
+            return
+
+        lyric = await get_lyric(mid=mid, trans=trans, roma=roma)
+
+        async with await anyio.open_file(full_path, "w") as f:
+            await f.write(lyric["lyric"])
+
+        logging.info(f"[blue][完成][/] {full_path.name}")
+
+    async with asyncio.Semaphore(num_workers):
+        with console.status("下载歌词中..."):
+            await asyncio.gather(*[download_lyric(song.mid) for song in data.values()])
