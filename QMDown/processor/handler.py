@@ -19,7 +19,7 @@ from QMDown import console
 from QMDown.model import Song, SongUrl
 from QMDown.utils.lrcparser import LrcParser
 from QMDown.utils.priority import get_priority
-from QMDown.utils.utils import show_qrcode
+from QMDown.utils.utils import show_qrcode, substitute_with_fullwidth
 
 
 async def handle_login(  # noqa: C901
@@ -163,7 +163,7 @@ async def handle_lyric(
     async def download_lyric(client: httpx.AsyncClient, mid: str):
         song = data[mid]
         song_name = song.get_full_name()
-        lyric_path = save_dir / f"{song_name}.lrc"
+        lyric_path = save_dir / f"{substitute_with_fullwidth(song_name)}.lrc"
 
         if not overwrite and lyric_path.exists():
             logging.info(f"[blue][跳过][/] {lyric_path.name}")

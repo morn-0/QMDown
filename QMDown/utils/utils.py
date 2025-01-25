@@ -8,6 +8,19 @@ from PIL._typing import StrOrBytesPath
 from qrcode import QRCode
 
 
+def substitute_with_fullwidth(
+    input_string: str, substitutions: set[str] = {"\x00", "\\", "/", ":", "<", ">", "|", "?", "*", '"', "."}
+) -> str:
+    """
+    将字符串中的指定字符替换为全角字符.
+
+    Args:
+        input_string: 输入的字符串.
+        substitutions: 需要替换为全角字符的字符集合.
+    """
+    return "".join(chr(ord(char) + 0xFEE0) if char in substitutions else char for char in input_string)
+
+
 async def get_real_url(url: str) -> str | None:
     """获取跳转后的URL.
 
