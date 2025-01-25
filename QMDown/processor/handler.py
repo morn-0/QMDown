@@ -17,6 +17,7 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 
 from QMDown import console
 from QMDown.model import Song, SongUrl
+from QMDown.utils.lrcparser import LrcParser
 from QMDown.utils.priority import get_priority
 from QMDown.utils.utils import show_qrcode
 
@@ -151,27 +152,59 @@ async def handle_lyric(
     roma: bool = False,
     qrc: bool = False,
 ):
+    save_dir = Path(save_dir)
+    save_dir.mkdir(parents=True, exist_ok=True)
+
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
         retry=retry_if_exception_type((httpx.RequestError, httpx.ReadTimeout, httpx.ConnectTimeout)),
     )
-    async def download_lyric(mid: str):
+    async def download_lyric(client: httpx.AsyncClient, mid: str):
         song = data[mid]
-        lyric_path = song.get_full_name() + ".lrc"
-        full_path = Path(save_dir) / lyric_path
+        song_name = song.get_full_name()
+        lyric_path = save_dir / f"{song_name}.lrc"
 
-        if not overwrite and full_path.exists():
-            logging.info(f"[blue][跳过][/] {lyric_path}")
+        if not overwrite and lyric_path.exists():
+            logging.info(f"[blue][跳过][/] {lyric_path.name}")
             return
 
-        lyric = await get_lyric(mid=mid, trans=trans, roma=roma)
+        try:
+            lyric = await get_lyric(mid=mid, qrc=qrc, trans=trans, roma=roma)
+        except Exception as e:
+            logging.error(f"[red][错误][/] 下载歌词失败: {song_name} - {e}")
+            return
 
-        async with await anyio.open_file(full_path, "w") as f:
-            await f.write(lyric["lyric"])
+        ori_data = lyric.get("lyric", "")
 
-        logging.info(f"[blue][完成][/] {full_path.name}")
+        if not ori_data:
+            logging.warning(f"[yellow] {song_name} 无歌词")
+            return
 
-    async with asyncio.Semaphore(num_workers):
+        trans_data = lyric.get("trans", "")
+        roma_data = lyric.get("roma", "")
+
+        lyrics = LrcParser(ori_data)
+        lyrics.parse_lrc(trans_data)
+        lyrics.parse_lrc(roma_data)
+
+        if trans and not trans_data:
+            logging.warning(f"[yellow] {song_name} 无翻译歌词")
+
+        if roma and not roma_data:
+            logging.warning(f"[yellow] {song_name} 无罗马歌词")
+
+        async with await anyio.open_file(lyric_path, "w") as f:
+            await f.write(lyrics.dump())
+
+        logging.info(f"[blue][完成][/] {lyric_path.name}")
+
+    async with httpx.AsyncClient() as client:
+        semaphore = asyncio.Semaphore(num_workers)
+
+        async def safe_download(mid: str):
+            async with semaphore:
+                await download_lyric(client, mid)
+
         with console.status("下载歌词中..."):
-            await asyncio.gather(*[download_lyric(song.mid) for song in data.values()])
+            await asyncio.gather(*(safe_download(song.mid) for song in data.values()))

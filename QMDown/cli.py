@@ -106,7 +106,23 @@ async def cli(  # noqa: C901
         bool,
         typer.Option(
             "--lyric",
-            help="下载源语言歌词",
+            help="启用下载歌词功能,默认下载源语言歌词",
+            rich_help_panel="[blue]Lyric [green]歌词",
+        ),
+    ] = False,
+    with_trans: Annotated[
+        bool,
+        typer.Option(
+            "--trans",
+            help="下载翻译歌词,需`--lyric`选项",
+            rich_help_panel="[blue]Lyric [green]歌词",
+        ),
+    ] = False,
+    with_roma: Annotated[
+        bool,
+        typer.Option(
+            "--roma",
+            help="下载罗马歌词,需`--lyric`选项",
             rich_help_panel="[blue]Lyric [green]歌词",
         ),
     ] = False,
@@ -261,7 +277,12 @@ async def cli(  # noqa: C901
 
     logging.info("[blue][歌词][/] 开始下载")
     await handle_lyric(
-        {mid: data[mid] for mid in s_mids}, save_dir=output_path, num_workers=num_workers, overwrite=overwrite
+        {mid: data[mid] for mid in s_mids},
+        save_dir=output_path,
+        num_workers=num_workers,
+        overwrite=overwrite,
+        trans=with_trans,
+        roma=with_roma,
     )
     logging.info("[blue][歌词][green] 下载完成")
 
