@@ -57,7 +57,7 @@ def tag2stamp(IDTag: str) -> float | None:
 
 
 class LrcParser:
-    """用于解析 LRC 文件的解析器."""
+    """用于解析 LRC 的解析器."""
 
     def __init__(self, lrc: str | None = None) -> None:
         """
