@@ -7,7 +7,8 @@ __version__ = "0.2.0"
 
 console = Console()
 
-logging.getLogger("httpx").setLevel("CRITICAL")
+logging.getLogger("httpx").propagate = False
+logging.getLogger("httpcore").propagate = False
 
 logging.basicConfig(
     level="INFO",

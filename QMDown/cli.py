@@ -240,8 +240,8 @@ async def cli(  # noqa: C901
                             song_data.extend(data)
                         else:
                             song_data.append(data)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logging.error(f"[blue][{extractor.__class__.__name__}][/] {e}")
                     break
             else:
                 logging.info(f"Not Supported: {url}")
