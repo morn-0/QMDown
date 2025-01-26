@@ -13,6 +13,9 @@ class SongExtractor(SingleExtractor):
     @override
     async def extract(self, url: str):
         id = self._match_id(url)
-        song = (await api.query([id]))[0]
+        try:
+            song = (await api.query([int(id)]))[0]
+        except ValueError:
+            song = (await api.query([id]))[0]
         self.report_info(f"获取成功: {id} {song.get_full_name()}")
         return song
