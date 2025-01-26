@@ -1,8 +1,7 @@
-from qqmusic_api import song
 from typing_extensions import override
 
+from QMDown import api
 from QMDown.extractor._abc import SingleExtractor
-from QMDown.model import Song
 
 
 class SongExtractor(SingleExtractor):
@@ -14,9 +13,6 @@ class SongExtractor(SingleExtractor):
     @override
     async def extract(self, url: str):
         id = self._match_id(url)
-        data = await song.query_song([id])
-        if data:
-            _song = Song.model_validate(data[0])
-            self.report_info(f"获取成功: {id} {_song.get_full_name()}")
-            return _song
-        return None
+        song = (await api.query([id]))[0]
+        self.report_info(f"获取成功: {id} {song.get_full_name()}")
+        return song

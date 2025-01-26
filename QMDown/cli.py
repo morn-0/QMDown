@@ -249,8 +249,10 @@ async def cli(  # noqa: C901
         data = {item.mid: item for item in song_data}
         # 获取歌曲链接
         status.update(f"[green]获取歌曲链接中[/] 共{len(data)}首...")
-        song_urls, s_mids, f_mids = await handle_song_urls(data, int(max_quality), credential)
+        song_urls, f_mids = await handle_song_urls(data, int(max_quality), credential)
+
         logging.info(f"[red]获取歌曲链接成功: {len(data) - len(f_mids)}/{len(data)}")
+
         if len(f_mids) > 0:
             logging.info(f"[red]获取歌曲链接失败: {[data[mid].get_full_name() for mid in f_mids]}")
 
@@ -258,18 +260,25 @@ async def cli(  # noqa: C901
         raise typer.Exit()
 
     # 下载歌曲
-    logging.info("[blue][歌曲][/] 开始下载")
-    downloader = AsyncDownloader(
+    logging.info(f"[blue][歌曲][/] 开始下载 总共 {len(song_urls)} 首")
+
+    song_downloader = AsyncDownloader(
         save_dir=output_path,
         num_workers=num_workers,
         no_progress=no_progress,
         overwrite=overwrite,
     )
-    for _url in song_urls:
-        song = data[_url.mid]
-        await downloader.add_task(url=_url.url.__str__(), file_name=song.get_full_name(), file_suffix=_url.type.e)
-    await downloader.execute_tasks()
-    logging.info("[blue][歌曲][green] 下载完成")
+
+    tags: dict[Path, Song] = {}
+
+    for url in song_urls:
+        song = data[url.mid]
+        path = await song_downloader.add_task(
+            url=url.url.__str__(), file_name=song.get_full_name(), file_suffix=url.type.e
+        )
+        tags[path] = song
+
+    await song_downloader.execute_tasks()
 
     # 下载歌词
     if not with_lyric:
@@ -277,7 +286,7 @@ async def cli(  # noqa: C901
 
     logging.info("[blue][歌词][/] 开始下载")
     await handle_lyric(
-        {mid: data[mid] for mid in s_mids},
+        {url.mid: data[url.mid] for url in song_urls},
         save_dir=output_path,
         num_workers=num_workers,
         overwrite=overwrite,

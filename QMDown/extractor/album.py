@@ -1,8 +1,7 @@
-from qqmusic_api import album
 from typing_extensions import override
 
+from QMDown import api
 from QMDown.extractor._abc import BatchExtractor
-from QMDown.model import Song
 
 
 class AlbumExtractor(BatchExtractor):
@@ -15,13 +14,9 @@ class AlbumExtractor(BatchExtractor):
     async def extract(self, url: str):
         id = self._match_id(url)
         try:
-            _album = album.Album(id=int(id))
+            detail = await api.get_album_detail(id=int(id))
         except ValueError:
-            _album = album.Album(mid=id)
+            detail = await api.get_album_detail(mid=id)
 
-        data = await _album.get_song()
-        info = await _album.get_detail()
-        if data:
-            self.report_info(f"获取成功: {id} {info['basicInfo']['albumName']}")
-            return [Song.model_validate(song) for song in data]
-        return None
+        self.report_info(f"获取成功: {id} {detail.info.name}")
+        return detail.songs

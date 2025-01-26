@@ -8,10 +8,9 @@ from rich.progress import BarColumn, DownloadColumn, Progress, SpinnerColumn, Ta
 from rich.table import Column
 
 from QMDown import console
-from QMDown.utils.singleton import Singleton
 
 
-class ProgressManager(metaclass=Singleton):
+class DownloadProgress:
     """
     进度条管理
     """

@@ -4,13 +4,11 @@ from pathlib import Path
 
 import anyio
 import httpx
-from rich.progress import (
-    TaskID,
-)
+from rich.progress import TaskID
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from QMDown import console
-from QMDown.utils.progress import ProgressManager
+from QMDown.utils.progress import DownloadProgress
 from QMDown.utils.utils import substitute_with_fullwidth
 
 
@@ -38,7 +36,7 @@ class AsyncDownloader:
         self.timeout = timeout
         self.semaphore = asyncio.Semaphore(num_workers)
         self.download_tasks = []
-        self.progress = ProgressManager()
+        self.progress = DownloadProgress()
         self.no_progress = no_progress
         self.overwrite = overwrite
 
@@ -85,13 +83,16 @@ class AsyncDownloader:
                     await self.progress.update(task_id, visible=False)
                     logging.info(f"[blue][完成][/] {full_path.name}")
 
-    async def add_task(self, url: str, file_name: str, file_suffix: str):
+    async def add_task(self, url: str, file_name: str, file_suffix: str) -> Path:
         """添加下载任务.
 
         Args:
             url: 文件 URL.
             file_name: 文件名称.
             file_suffix: 文件后缀.
+
+        Returns:
+            文件存储位置
         """
         async with self.semaphore:
             # 文件路径
@@ -103,20 +104,20 @@ class AsyncDownloader:
                 logging.info(f"[blue][跳过][/] {file_name}")
             else:
                 task_id = await self.progress.add_task(
-                    description=f"[  {file_suffix.replace('.', '')}  ]:",
+                    description=f"[{file_suffix.replace('.', '')}]:",
                     filename=file_name,
                     visible=False,
                 )
                 download_task = asyncio.create_task(self.download_file(task_id, url, full_path))
                 self.download_tasks.append(download_task)
+            return full_path
 
     async def execute_tasks(self):
         """执行所有下载任务"""
         if len(self.download_tasks) == 0:
             return
-        logging.info(f"开始下载歌曲 总共:{len(self.download_tasks)}")
         if self.no_progress:
-            with console.status("下载歌曲中..."):
+            with console.status("下载中..."):
                 await asyncio.gather(*self.download_tasks)
         else:
             with self.progress:

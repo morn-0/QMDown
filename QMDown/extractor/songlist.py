@@ -1,8 +1,7 @@
-from qqmusic_api import songlist
 from typing_extensions import override
 
+from QMDown import api
 from QMDown.extractor._abc import BatchExtractor
-from QMDown.model import Song
 
 
 class SonglistExtractor(BatchExtractor):
@@ -14,10 +13,6 @@ class SonglistExtractor(BatchExtractor):
     @override
     async def extract(self, url: str):
         id = self._match_id(url)
-        _songlist = songlist.Songlist(int(id))
-        data = await _songlist.get_song()
-        info = await _songlist.get_detail()
-        if data:
-            self.report_info(f"获取成功: {id} {info['title']} - {info['creator']['nick']}")
-            return [Song.model_validate(song) for song in data]
-        return None
+        songlist = await api.get_songlist_detail(int(id))
+        self.report_info(f"获取成功: {id} {songlist.title} - {songlist.host_nick}")
+        return songlist.songs

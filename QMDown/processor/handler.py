@@ -6,16 +6,14 @@ from pathlib import Path
 
 import anyio
 import typer
-from pydantic import HttpUrl
 from qqmusic_api import Credential
 from qqmusic_api.login import httpx
 from qqmusic_api.login_utils import PhoneLogin, PhoneLoginEvents, QQLogin, QrCodeLoginEvents, WXLogin
 from qqmusic_api.lyric import get_lyric
-from qqmusic_api.song import get_song_urls
 from qqmusic_api.user import User
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
-from QMDown import console
+from QMDown import api, console
 from QMDown.model import Song, SongUrl
 from QMDown.utils.lrcparser import LrcParser
 from QMDown.utils.priority import get_priority
@@ -121,26 +119,33 @@ async def handle_song_urls(
     data: dict[str, Song],
     max_quality: int,
     credential: Credential | None,
-):
-    qualities = get_priority(int(max_quality))
+) -> tuple[list[SongUrl], list[str]]:
+    qualities = get_priority(max_quality)
     all_mids = [song.mid for song in data.values()]
-    song_urls: list[SongUrl] = []
-    mids = all_mids.copy()
-    for _quality in qualities:
-        if len(mids) == 0:
+    success_urls: list[SongUrl] = []
+    pending_mids = all_mids.copy()
+    for current_quality in qualities:
+        if not pending_mids:
             break
-        _urls = {}
         try:
-            _urls = await get_song_urls(mids, _quality, credential=credential)
-        except Exception:
-            pass
-        mids = list(filter(lambda mid: not _urls[mid], _urls))
-        [_urls.pop(mid, None) for mid in mids]
-        song_urls.extend(
-            [SongUrl(id=data[mid].id, mid=mid, url=HttpUrl(url), type=_quality) for mid, url in _urls.items() if url]
-        )
-        logging.info(f"[blue][{_quality.name}]:[/] 获取成功数量: {len(_urls)}")
-    return song_urls, [mid for mid in all_mids if mid not in mids], mids
+            batch_urls = await api.get_download_url(mids=pending_mids, quality=current_quality, credential=credential)
+            url_map = {url.mid: url for url in batch_urls if url.url}
+            succeeded = []
+            remaining = []
+            for mid in pending_mids:
+                if mid in url_map:
+                    succeeded.append(url_map[mid])
+                else:
+                    remaining.append(mid)
+            success_urls.extend(succeeded)
+            pending_mids = remaining
+
+            logging.info(f"[blue][{current_quality.name}]:[/] 获取成功数量: {len(succeeded)}")
+        except Exception as e:
+            logging.error(f"[blue][{current_quality.name}]:[/] {e}")
+            continue
+
+    return success_urls, pending_mids
 
 
 async def handle_lyric(
@@ -181,18 +186,9 @@ async def handle_lyric(
             logging.warning(f"[yellow] {song_name} 无歌词")
             return
 
-        trans_data = lyric.get("trans", "")
-        roma_data = lyric.get("roma", "")
-
         lyrics = LrcParser(ori_data)
-        lyrics.parse_lrc(trans_data)
-        lyrics.parse_lrc(roma_data)
-
-        if trans and not trans_data:
-            logging.warning(f"[yellow] {song_name} 无翻译歌词")
-
-        if roma and not roma_data:
-            logging.warning(f"[yellow] {song_name} 无罗马歌词")
+        lyrics.parse_lrc(lyric.get("trans", ""))
+        lyrics.parse_lrc(lyric.get("roma", ""))
 
         async with await anyio.open_file(lyric_path, "w") as f:
             await f.write(lyrics.dump())
