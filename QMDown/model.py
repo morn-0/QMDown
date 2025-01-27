@@ -126,6 +126,9 @@ class AlbumDetial(BaseModel):
     singer: list[Singer]
     songs: list[Song]
 
+    def singer_to_str(self, sep: str = ",") -> str:
+        return sep.join([s.name for s in self.singer])
+
 
 class SonglistDetail(BaseModel):
     id: int

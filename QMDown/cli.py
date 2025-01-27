@@ -14,6 +14,7 @@ from QMDown.processor.downloader import AsyncDownloader
 from QMDown.processor.handler import handle_login, handle_lyric, handle_song_urls
 from QMDown.utils.async_typer import AsyncTyper
 from QMDown.utils.priority import SongFileTypePriority
+from QMDown.utils.tag import add_cover_to_audio
 from QMDown.utils.utils import get_real_url
 
 app = AsyncTyper(
@@ -25,7 +26,7 @@ app = AsyncTyper(
 
 def handle_version(value: bool):
     if value:
-        console.print(f"[green]QMDown [blue]{__version__}")
+        console.print(f"[green bold]QMDown [blue bold]{__version__}")
         raise typer.Exit()
 
 
@@ -57,7 +58,8 @@ async def cli(  # noqa: C901
     urls: Annotated[
         list[str],
         typer.Argument(
-            help="链接",
+            help="QQ 音乐链接(支持多个链接)",
+            show_default=False,
         ),
     ],
     output_path: Annotated[
@@ -65,10 +67,10 @@ async def cli(  # noqa: C901
         typer.Option(
             "-o",
             "--output",
-            help="歌曲保存路径",
+            help="下载文件存储目录",
             resolve_path=True,
             file_okay=False,
-            rich_help_panel="[blue]Download [green]下载",
+            rich_help_panel="[blue bold]Download[/] [green bold]下载",
         ),
     ] = Path.cwd(),
     num_workers: Annotated[
@@ -76,8 +78,8 @@ async def cli(  # noqa: C901
         typer.Option(
             "-n",
             "--num-workers",
-            help="最大并发下载数",
-            rich_help_panel="[blue]Download [green]下载",
+            help="并发下载协程数量",
+            rich_help_panel="[blue bold]Download[/] [green bold]下载",
             min=1,
         ),
     ] = 8,
@@ -86,11 +88,11 @@ async def cli(  # noqa: C901
         typer.Option(
             "-q",
             "--quality",
-            help="最大下载音质",
+            help="首选音频品质",
             click_type=click.Choice(
                 [str(_.value) for _ in SongFileTypePriority],
             ),
-            rich_help_panel="[blue]Download [green]下载",
+            rich_help_panel="[blue bold]Download[/] [green bold]下载",
         ),
     ] = str(SongFileTypePriority.MP3_128.value),
     overwrite: Annotated[
@@ -98,32 +100,40 @@ async def cli(  # noqa: C901
         typer.Option(
             "-w",
             "--overwrite",
-            help="强制覆盖已下载文件",
-            rich_help_panel="[blue]Download [green]下载",
+            help="覆盖已存在文件",
+            rich_help_panel="[blue bold]Download[/] [green bold]下载",
         ),
     ] = False,
     with_lyric: Annotated[
         bool,
         typer.Option(
             "--lyric",
-            help="启用下载歌词功能,默认下载源语言歌词",
-            rich_help_panel="[blue]Lyric [green]歌词",
+            help="下载原始歌词文件",
+            rich_help_panel="[blue bold]Lyric[/] [green bold]歌词选项",
         ),
     ] = False,
     with_trans: Annotated[
         bool,
         typer.Option(
             "--trans",
-            help="下载翻译歌词,需`--lyric`选项",
-            rich_help_panel="[blue]Lyric [green]歌词",
+            help="下载双语翻译歌词(需配合`--lyric`使用)",
+            rich_help_panel="[blue bold]Lyric[/] [green bold]歌词选项",
         ),
     ] = False,
     with_roma: Annotated[
         bool,
         typer.Option(
             "--roma",
-            help="下载罗马歌词,需`--lyric`选项",
-            rich_help_panel="[blue]Lyric [green]歌词",
+            help="下载罗马音歌词(需配合`--lyric`使用)",
+            rich_help_panel="[blue bold]Lyric[/] [green bold]歌词选项",
+        ),
+    ] = False,
+    no_cover: Annotated[
+        bool,
+        typer.Option(
+            "--no-cover",
+            help="禁用专辑封面嵌入",
+            rich_help_panel="[blue bold]Metadata[/] [green bold]元数据",
         ),
     ] = False,
     cookies: Annotated[
@@ -131,22 +141,22 @@ async def cli(  # noqa: C901
         typer.Option(
             "-c",
             "--cookies",
-            help="QQ 音乐 Cookie",
-            metavar="musicid:musickey",
+            help="QQ音乐Cookie凭证(从浏览器开发者工具获取 `musicid` 和 `musickey`,拼接为 `musicid:musickey` 格式)",
+            metavar="MUSICID:MUSICKEY",
             show_default=False,
-            rich_help_panel="[blue]Login [green]登录",
+            rich_help_panel="[blue bold]Authentication[/] [green bold]认证管理",
         ),
     ] = None,
     login_type: Annotated[
         str | None,
         typer.Option(
             "--login",
-            help="登录获取 Cookies",
+            help="第三方登录方式",
             click_type=click.Choice(
                 ["QQ", "WX", "PHONE"],
                 case_sensitive=False,
             ),
-            rich_help_panel="[blue]Login [green]登录",
+            rich_help_panel="[blue bold]Authentication[/] [green bold]认证管理",
             show_default=False,
         ),
     ] = None,
@@ -154,8 +164,8 @@ async def cli(  # noqa: C901
         Path | None,
         typer.Option(
             "--load",
-            help="从文件读取 Cookies",
-            rich_help_panel="[blue]Login [green]登录",
+            help="加载 Cookies 文件路径",
+            rich_help_panel="[blue bold]Authentication[/] [green bold]认证管理",
             resolve_path=True,
             dir_okay=False,
             show_default=False,
@@ -165,8 +175,8 @@ async def cli(  # noqa: C901
         Path | None,
         typer.Option(
             "--save",
-            help="保存 Cookies 到文件",
-            rich_help_panel="[blue]Login [green]登录",
+            help="持久化 Cookies 文件路径",
+            rich_help_panel="[blue bold]Authentication[/] [green bold]认证管理",
             resolve_path=True,
             dir_okay=False,
             writable=True,
@@ -177,14 +187,14 @@ async def cli(  # noqa: C901
         bool,
         typer.Option(
             "--no-progress",
-            help="不显示进度条",
+            help="禁用进度条显示",
         ),
     ] = False,
     no_color: Annotated[
         bool,
         typer.Option(
             "--no-color",
-            help="不显示颜色",
+            help="禁用彩色输出",
             is_eager=True,
             callback=handle_no_color,
         ),
@@ -193,7 +203,7 @@ async def cli(  # noqa: C901
         bool | None,
         typer.Option(
             "--debug",
-            help="启用调试模式",
+            help="启用调试日志输出",
             is_eager=True,
             callback=handle_debug,
         ),
@@ -203,7 +213,7 @@ async def cli(  # noqa: C901
         typer.Option(
             "-v",
             "--version",
-            help="显示版本信息",
+            help="输出版本信息",
             is_eager=True,
             callback=handle_version,
         ),
@@ -241,14 +251,14 @@ async def cli(  # noqa: C901
                         else:
                             song_data.append(data)
                     except Exception as e:
-                        logging.error(f"[blue][{extractor.__class__.__name__}][/] {e}")
+                        logging.error(f"[blue bold][{extractor.__class__.__name__}][/] {e}")
                     break
             else:
                 logging.info(f"Not Supported: {url}")
         # 歌曲去重
         data = {item.mid: item for item in song_data}
         # 获取歌曲链接
-        status.update(f"[green]获取歌曲链接中[/] 共{len(data)}首...")
+        status.update(f"[green bold]获取歌曲链接中[/] 共{len(data)}首...")
         song_urls, f_mids = await handle_song_urls(data, int(max_quality), credential)
 
         logging.info(f"[red]获取歌曲链接成功: {len(data) - len(f_mids)}/{len(data)}")
@@ -260,7 +270,7 @@ async def cli(  # noqa: C901
         raise typer.Exit()
 
     # 下载歌曲
-    logging.info(f"[blue][歌曲][/] 开始下载 总共 {len(song_urls)} 首")
+    logging.info(f"[blue bold][歌曲][/] 开始下载 总共 {len(song_urls)} 首")
 
     song_downloader = AsyncDownloader(
         save_dir=output_path,
@@ -280,20 +290,45 @@ async def cli(  # noqa: C901
 
     await song_downloader.execute_tasks()
 
-    # 下载歌词
-    if not with_lyric:
-        raise typer.Exit()
+    logging.info("[blue bold][歌曲][green bold] 下载完成")
 
-    logging.info("[blue][歌词][/] 开始下载")
-    await handle_lyric(
-        {url.mid: data[url.mid] for url in song_urls},
-        save_dir=output_path,
-        num_workers=num_workers,
-        overwrite=overwrite,
-        trans=with_trans,
-        roma=with_roma,
-    )
-    logging.info("[blue][歌词][green] 下载完成")
+    if not no_cover:
+        # 下载封面
+        logging.info("[blue bold][封面][/] 开始下载")
+
+        cover_downloader = AsyncDownloader(
+            save_dir=output_path,
+            num_workers=num_workers,
+            overwrite=overwrite,
+        )
+
+        for song in tags.values():
+            await cover_downloader.add_task(
+                url=f"https://y.gtimg.cn/music/photo_new/T002R500x500M000{song.album.mid}.jpg",
+                file_name=song.get_full_name(),
+                file_suffix=".jpg",
+            )
+
+        await cover_downloader.execute_tasks()
+
+        logging.info("[blue bold][封面][green bold] 下载完成")
+
+        for path, song in tags.items():
+            cover_path = path.with_suffix(".jpg")
+            await add_cover_to_audio(path, cover_path)
+
+    # 下载歌词
+    if with_lyric:
+        logging.info("[blue bold][歌词][/] 开始下载")
+        await handle_lyric(
+            {url.mid: data[url.mid] for url in song_urls},
+            save_dir=output_path,
+            num_workers=num_workers,
+            overwrite=overwrite,
+            trans=with_trans,
+            roma=with_roma,
+        )
+        logging.info("[blue bold][歌词][green bold] 下载完成")
 
 
 if __name__ == "__main__":
