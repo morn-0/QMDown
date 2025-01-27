@@ -14,6 +14,8 @@ from mutagen.mp4 import MP4, MP4Cover
 from mutagen.oggopus import OggOpus
 from mutagen.oggvorbis import OggVorbis
 
+Metadata = dict[str, str | list[str]]
+
 
 async def add_cover_to_audio(audio_path: str | Path, cover_path: str | Path, remove: bool = True) -> None:
     """
@@ -27,119 +29,104 @@ async def add_cover_to_audio(audio_path: str | Path, cover_path: str | Path, rem
     audio_path = Path(audio_path)
     cover_path = Path(cover_path)
 
-    # 检查封面文件是否存在
-    if not await to_thread.run_sync(cover_path.exists):
-        logging.warning(f"[blue][封面][/] 封面文件不存在: {cover_path}")
+    if not audio_path.exists() or not cover_path.exists():
+        logging.debug(f"[blue][封面][/] 封面文件不存在: {cover_path}")
         return
 
     try:
-        # 异步读取封面数据
         async with await anyio.open_file(cover_path, "rb") as f:
             cover_data = await f.read()
-
-        # 检测 MIME 类型
         mime_type, _ = await to_thread.run_sync(mimetypes.guess_type, cover_path)
         if mime_type not in ("image/jpeg", "image/png", "image/webp"):
-            raise ValueError(f"不支持的图片格式: {mime_type}")
-
-        # 根据文件后缀选择处理方式
-        ext = audio_path.suffix.lower()
-        if ext == ".mp3":
-            await _handle_mp3_cover(audio_path, cover_data, mime_type)
-        elif ext in (".flac", ".oga"):
-            await _handle_flac_cover(audio_path, cover_data, mime_type)
-        elif ext in (".ogg", ".opus"):
-            await _handle_ogg_cover(audio_path, cover_data, mime_type)
-        elif ext in (".m4a", ".aac", ".mp4"):
-            await _handle_aac_cover(audio_path, cover_data, mime_type)
-        else:
-            raise ValueError(f"不支持的音频格式: {ext}")
-
-        # 删除封面文件
-        if remove:
+            logging.debug(f"[blue][封面][/] 不支持的图片格式: {mime_type}")
+            return
+        await _process_audio_cover(audio_path.suffix.lower(), audio_path, cover_data, mime_type)
+        logging.debug(f"[blue][封面][/] 成功嵌入封面到 {audio_path.name}")
+    except Exception as e:
+        logging.error(f"[blue][封面][/] 处理 {audio_path.name} 失败: {e}", exc_info=True)
+    finally:
+        if remove and cover_path.exists:
             await to_thread.run_sync(cover_path.unlink, True)
 
-        logging.debug(f"[blue][封面][/] 成功添加封面到 {audio_path}")
+
+async def _process_audio_cover(ext: str, path: Path, data: bytes, mime: str):  # noqa: C901
+    """统一处理不同音频格式的封面添加"""
+
+    def _create_picture():
+        pic = Picture()
+        pic.type, pic.mime, pic.data, pic.desc = 3, mime, data, "Cover"
+        return pic
+
+    if ext == ".mp3":
+
+        def _mp3():
+            try:
+                audio = ID3(path)
+            except ID3NoHeaderError:
+                audio = ID3()
+            audio.delall("APIC")
+            audio.add(APIC(encoding=0, mime=mime, type=3, desc="Cover", data=data))
+            audio.save(path, v2_version=3)
+
+        await to_thread.run_sync(_mp3)
+
+    elif ext in (".flac", ".oga"):
+
+        def _flac():
+            audio = FLAC(path)
+            audio.clear_pictures()
+            audio.add_picture(_create_picture())
+            audio.save()
+
+        await to_thread.run_sync(_flac)
+
+    elif ext in (".ogg", ".opus"):
+
+        def _ogg():
+            audio = File(path)
+            if not isinstance(audio, OggOpus | OggVorbis):
+                raise ValueError(f"不支持的 Ogg 格式: {path.suffix}")
+            pic = _create_picture()
+            audio["metadata_block_picture"] = [base64.b64encode(pic.write()).decode()]
+            audio.save()
+
+        await to_thread.run_sync(_ogg)
+
+    elif ext in (".m4a", ".aac", ".mp4"):
+
+        def _aac():
+            audio = MP4(path)
+            fmt = MP4Cover.FORMAT_JPEG if mime == "image/jpeg" else MP4Cover.FORMAT_PNG
+            audio["covr"] = [MP4Cover(data, fmt)]
+            audio.save()
+
+        await to_thread.run_sync(_aac)
+
+    else:
+        logging.debug(f"[blue][封面][/] 不支持的音频格式: {path}")
+
+
+async def write_metadata(file: str | Path, metadata: Metadata) -> None:
+    """写入元数据到音频文件"""
+    file = Path(file)
+    if not file.exists():
+        logging.debug(f"[blue][标签][/] 文件不存在: {file}")
+        return
+
+    try:
+        audio = File(str(file), easy=True)
+        if audio is None:
+            logging.debug(f"[blue][标签][/] 不支持的音频格式: {file}")
+            return
+
+        for key, value in metadata.items():
+            try:
+                audio[key] = value
+            except (KeyError, ValueError, TypeError) as e:
+                logging.debug(f"[blue][标签][/] {key}={value} 写入失败: {e}")
+
+        await to_thread.run_sync(audio.save)
+        logging.debug(f"[blue][标签][/] 元数据写入成功: {file.name}")
 
     except Exception as e:
-        logging.error(f"[blue][封面][/] 处理 {audio_path} 失败: {e!s}")
-        if remove and await to_thread.run_sync(cover_path.exists):
-            await to_thread.run_sync(cover_path.unlink, True)
-
-
-async def _handle_mp3_cover(path: Path, data: bytes, mime: str) -> None:
-    try:
-        # 强制加载为 ID3v2.3
-        audio = await to_thread.run_sync(
-            lambda: ID3(path) if path.exists() else ID3(),
-        )
-    except ID3NoHeaderError:
-        audio = ID3()
-
-    # 清理旧封面
-    audio.delall("APIC")
-
-    # 添加 APIC 帧
-    audio.add(
-        APIC(
-            encoding=0,  # Latin-1
-            mime=mime,
-            type=3,  # 3 = 封面图片
-            desc="Cover",
-            data=data,
-        )
-    )
-
-    # 保存为 ID3v2.3
-    await to_thread.run_sync(lambda: audio.save(path, v2_version=3))
-
-
-async def _handle_flac_cover(path: Path, data: bytes, mime: str) -> None:
-    audio = await to_thread.run_sync(FLAC, path)
-
-    # 创建 Picture 对象
-    pic = Picture()
-    pic.type = 3
-    pic.mime = mime
-    pic.data = data
-    pic.desc = "Cover"
-
-    # 清除旧图片并添加新图片
-    audio.clear_pictures()
-    audio.add_picture(pic)
-
-    await to_thread.run_sync(audio.save)
-
-
-async def _handle_ogg_cover(path: Path, data: bytes, mime: str) -> None:
-    audio = await to_thread.run_sync(File, path)
-
-    if isinstance(audio, OggOpus):
-        audio = OggOpus(path)
-    elif isinstance(audio, OggVorbis):
-        audio = OggVorbis(path)
-    else:
-        raise ValueError("不支持的 Ogg 格式")
-
-    pic = Picture()
-    pic.type = 3
-    pic.mime = mime
-    pic.data = data
-    pic.desc = "Cover"
-
-    audio["metadata_block_picture"] = [base64.b64encode(pic.write()).decode("utf-8")]
-
-    await to_thread.run_sync(audio.save)
-
-
-async def _handle_aac_cover(path: Path, data: bytes, mime: str) -> None:
-    audio = await to_thread.run_sync(MP4, path)
-
-    # 转换图片格式
-    cover_format = MP4Cover.FORMAT_JPEG if mime == "image/jpeg" else MP4Cover.FORMAT_PNG
-    cover = MP4Cover(data, cover_format)
-
-    # 设置 covr 原子
-    audio["covr"] = [cover]
-
-    await to_thread.run_sync(audio.save)
+        logging.error(f"[blue][标签][/] 处理 {file.name} 失败: {e}", exc_info=True)

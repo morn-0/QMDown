@@ -17,7 +17,60 @@ from QMDown import api, console
 from QMDown.model import Song, SongUrl
 from QMDown.utils.lrcparser import LrcParser
 from QMDown.utils.priority import get_priority
+from QMDown.utils.tag import Metadata, write_metadata
 from QMDown.utils.utils import show_qrcode, substitute_with_fullwidth
+
+
+async def tag_audio(mid: str, album_mid: str, file: Path):
+    """给音频文件添加元数据
+
+    Args:
+        mid: 歌曲 mid
+        album_mid: 专辑 mid
+        file: 音频文件路径
+    """
+    song_task = asyncio.create_task(api.get_song_detail(mid))
+    album_task = asyncio.create_task(api.get_album_detail(mid=album_mid)) if album_mid else None
+
+    # 处理歌曲信息
+    song = await song_task
+    track_info = song.track_info
+
+    metadata: Metadata = {
+        "title": [track_info.title],
+        "artist": [s.name for s in track_info.singer],
+    }
+    if song.company:
+        metadata["copyright"] = song.company
+    if song.genre:
+        metadata["genre"] = song.genre
+
+    if track_info.index_album:
+        metadata["tracknumber"] = [str(track_info.index_album)]
+    if track_info.index_cd:
+        metadata["discnumber"] = [str(track_info.index_cd)]
+
+    # 处理专辑信息
+    if album_task:
+        album = await album_task
+        metadata.update(
+            {
+                "album": [album.info.name],
+                "albumartist": [s.name for s in album.singer],
+                "totaltracks": [str(len(album.songs))],
+            }
+        )
+
+    # 处理发行时间
+    if song.time_public and song.time_public[0]:
+        metadata.update(
+            {
+                "year": [str(song.time_public[0].year)],
+                "date": [str(song.time_public[0])],
+            }
+        )
+    logging.debug(f"[blue][标签][/] {file}: {metadata}")
+    await write_metadata(file, metadata)
 
 
 async def handle_login(  # noqa: C901
@@ -165,7 +218,7 @@ async def handle_lyric(
         wait=wait_exponential(multiplier=1, min=2, max=10),
         retry=retry_if_exception_type((httpx.RequestError, httpx.ReadTimeout, httpx.ConnectTimeout)),
     )
-    async def download_lyric(client: httpx.AsyncClient, mid: str):
+    async def download_lyric(mid: str):
         song = data[mid]
         song_name = song.get_full_name()
         lyric_path = save_dir / f"{substitute_with_fullwidth(song_name)}.lrc"
@@ -195,12 +248,11 @@ async def handle_lyric(
 
         logging.info(f"[blue][完成][/] {lyric_path.name}")
 
-    async with httpx.AsyncClient() as client:
-        semaphore = asyncio.Semaphore(num_workers)
+    semaphore = asyncio.Semaphore(num_workers)
 
-        async def safe_download(mid: str):
-            async with semaphore:
-                await download_lyric(client, mid)
+    async def safe_download(mid: str):
+        async with semaphore:
+            await download_lyric(mid)
 
-        with console.status("下载歌词中..."):
-            await asyncio.gather(*(safe_download(song.mid) for song in data.values()))
+    with console.status("下载歌词中..."):
+        await asyncio.gather(*(safe_download(song.mid) for song in data.values()))

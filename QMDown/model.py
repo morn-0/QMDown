@@ -1,10 +1,10 @@
 from datetime import date
 from typing import Annotated
 
-from pydantic import AliasChoices, AliasPath, BaseModel, BeforeValidator, Field, HttpUrl, model_validator
+from pydantic import AliasChoices, AliasPath, BaseModel, BeforeValidator, Field, model_validator
 from qqmusic_api.song import SongFileType
 
-PublicTimeField = Field(None, validation_alias=AliasChoices("time_public", "pub_time", "publishDate"))
+PublicTimeField = AliasChoices("time_public", "pub_time", "publishDate")
 PublicTime = Annotated[date | None, BeforeValidator(lambda value: None if not value else value)]
 
 
@@ -23,7 +23,7 @@ class Album(BaseModel):
     title: str | None = None
     pmid: str | None = None
     subtitle: str | None = None
-    time_public: PublicTime = PublicTimeField
+    time_public: PublicTime = Field(None, validation_alias=PublicTimeField)
 
 
 class PayInfo(BaseModel):
@@ -91,32 +91,32 @@ class Song(BaseModel):
 
 class SongUrl(BaseModel):
     mid: str
-    url: HttpUrl
+    url: str
     type: SongFileType
 
 
 class SongDetail(BaseModel):
     track_info: Song
-    company: str | None = None
-    genre: str | None = None
-    lan: str | None = None
-    time_public: PublicTime = PublicTimeField
+    company: list[str] = []
+    genre: list[str] = []
+    lan: list[str] = []
+    time_public: list[PublicTime] = Field([], validation_alias=PublicTimeField)
 
     @model_validator(mode="before")
     @classmethod
     def parse_info(cls, data):
         info = data.pop("info", {})
 
-        def get_first_value(key: str) -> str | None:
+        def get_first_value(key: str):
             if section := info.get(key):
                 if content := section.get("content"):
                     if content and isinstance(content, list):
-                        return content[0].get("value")
-            return None
+                        return [v.get("value") for v in content]
+            return []
 
-        field_map = {"company": "company", "genre": "genre", "lan": "lan", "pub_time": "pub_time"}
-        for model_field, data_key in field_map.items():
-            data[model_field] = get_first_value(data_key)
+        field = ["company", "genre", "lan", "pub_time"]
+        for f in field:
+            data[f] = get_first_value(f)
         return data
 
 

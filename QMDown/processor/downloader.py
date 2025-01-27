@@ -104,7 +104,7 @@ class AsyncDownloader:
                 logging.info(f"[blue][跳过][/] {file_name}")
             else:
                 task_id = await self.progress.add_task(
-                    description=f"[{file_suffix.replace('.', '')}]:",
+                    description=f"[ {file_suffix.replace('.', '')} ]:",
                     filename=file_name,
                     visible=False,
                 )

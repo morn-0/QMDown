@@ -1,4 +1,3 @@
-from pydantic import HttpUrl
 from qqmusic_api import Credential, album, song, songlist
 
 from QMDown.model import AlbumDetial, Song, SongDetail, SonglistDetail, SongUrl
@@ -19,7 +18,7 @@ async def get_download_url(
     mids: list[str], quality: song.SongFileType, credential: Credential | None = None
 ) -> list[SongUrl]:
     urls = await song.get_song_urls(mids, quality, credential)
-    return [SongUrl(mid=mid, url=HttpUrl(url), type=quality) for mid, url in urls.items()]
+    return [SongUrl(mid=mid, url=url, type=quality) for mid, url in urls.items()]
 
 
 @cached(args_to_cache_key=lambda args: args.arguments["mid"] or args.arguments["id"])

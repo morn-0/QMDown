@@ -11,7 +11,7 @@ from QMDown import __version__, console
 from QMDown.extractor import AlbumExtractor, SongExtractor, SonglistExtractor
 from QMDown.model import Song
 from QMDown.processor.downloader import AsyncDownloader
-from QMDown.processor.handler import handle_login, handle_lyric, handle_song_urls
+from QMDown.processor.handler import handle_login, handle_lyric, handle_song_urls, tag_audio
 from QMDown.utils.async_typer import AsyncTyper
 from QMDown.utils.priority import SongFileTypePriority
 from QMDown.utils.tag import add_cover_to_audio
@@ -126,6 +126,14 @@ async def cli(  # noqa: C901
             "--roma",
             help="下载罗马音歌词(需配合`--lyric`使用)",
             rich_help_panel="[blue bold]Lyric[/] [green bold]歌词选项",
+        ),
+    ] = False,
+    no_metadata: Annotated[
+        bool,
+        typer.Option(
+            "--no-metadata",
+            help="禁用元数据添加",
+            rich_help_panel="[blue bold]Metadata[/] [green bold]元数据",
         ),
     ] = False,
     no_cover: Annotated[
@@ -286,15 +294,23 @@ async def cli(  # noqa: C901
         path = await song_downloader.add_task(
             url=url.url.__str__(), file_name=song.get_full_name(), file_suffix=url.type.e
         )
-        tags[path] = song
+        if song.album.mid or song.album.pmid:
+            tags[path] = song
 
     await song_downloader.execute_tasks()
 
     logging.info("[blue bold][歌曲][green bold] 下载完成")
 
+    if not no_metadata:
+        logging.info("[blue bold][标签][/] 开始添加元数据")
+        with console.status("添加元数据中..."):
+            for path, song in tags.items():
+                await tag_audio(song.mid, song.album.mid, path)
+        logging.info("[blue bold][标签][green bold] 元数据添加完成")
+
     if not no_cover:
         # 下载封面
-        logging.info("[blue bold][封面][/] 开始下载")
+        logging.info("[blue bold][封面][/] 开始下载专辑封面")
 
         cover_downloader = AsyncDownloader(
             save_dir=output_path,
@@ -304,18 +320,21 @@ async def cli(  # noqa: C901
 
         for song in tags.values():
             await cover_downloader.add_task(
-                url=f"https://y.gtimg.cn/music/photo_new/T002R500x500M000{song.album.mid}.jpg",
+                url=f"https://y.gtimg.cn/music/photo_new/T002R500x500M000{song.album.mid or song.album.pmid}.jpg",
                 file_name=song.get_full_name(),
                 file_suffix=".jpg",
             )
 
         await cover_downloader.execute_tasks()
 
-        logging.info("[blue bold][封面][green bold] 下载完成")
+        logging.info("[blue bold][封面][green bold] 专辑封面下载完成")
 
-        for path, song in tags.items():
-            cover_path = path.with_suffix(".jpg")
-            await add_cover_to_audio(path, cover_path)
+        logging.info("[blue bold][封面][/] 开始嵌入专辑封面")
+        with console.status("嵌入封面中..."):
+            for path, song in tags.items():
+                cover_path = path.with_suffix(".jpg")
+                await add_cover_to_audio(path, cover_path)
+        logging.info("[blue bold][封面][green bold] 专辑封面嵌入完成")
 
     # 下载歌词
     if with_lyric:
