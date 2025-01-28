@@ -4,7 +4,7 @@ from QMDown.model import AlbumDetial, Song, SongDetail, SonglistDetail, SongUrl
 from QMDown.utils.cache import cached
 
 
-@cached(args_to_cache_key=lambda args: ",".join(args.arguments["value"]))
+@cached(args_to_cache_key=lambda args: ",".join(sorted(args.arguments["value"])))
 async def query(value: list[str] | list[int]) -> list[Song]:
     return [Song.model_validate(song) for song in await song.query_song(value)]
 
