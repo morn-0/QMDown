@@ -141,7 +141,7 @@ async def cli(  # noqa: C901
         typer.Option(
             "--lyric",
             help="下载原始歌词文件",
-            rich_help_panel="[blue bold]Lyric[/] [green bold]歌词选项",
+            rich_help_panel="[blue bold]Lyric[/] [green bold]歌词",
         ),
     ] = False,
     with_trans: Annotated[
@@ -149,7 +149,7 @@ async def cli(  # noqa: C901
         typer.Option(
             "--trans",
             help="下载双语翻译歌词(需配合`--lyric`使用)",
-            rich_help_panel="[blue bold]Lyric[/] [green bold]歌词选项",
+            rich_help_panel="[blue bold]Lyric[/] [green bold]歌词",
         ),
     ] = False,
     with_roma: Annotated[
@@ -157,7 +157,7 @@ async def cli(  # noqa: C901
         typer.Option(
             "--roma",
             help="下载罗马音歌词(需配合`--lyric`使用)",
-            rich_help_panel="[blue bold]Lyric[/] [green bold]歌词选项",
+            rich_help_panel="[blue bold]Lyric[/] [green bold]歌词",
         ),
     ] = False,
     no_metadata: Annotated[
