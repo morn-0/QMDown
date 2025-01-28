@@ -4,6 +4,8 @@ from typing import Annotated
 from pydantic import AliasChoices, AliasPath, BaseModel, BeforeValidator, Field, model_validator
 from qqmusic_api.song import SongFileType
 
+from QMDown.utils.lrcparser import LrcParser
+
 PublicTimeField = AliasChoices("time_public", "pub_time", "publishDate")
 PublicTime = Annotated[date | None, BeforeValidator(lambda value: None if not value else value)]
 
@@ -138,3 +140,15 @@ class SonglistDetail(BaseModel):
     host_uin: int
     host_nick: str
     songs: list[Song]
+
+
+class Lyric(BaseModel):
+    lyric: str
+    trans: str
+    roma: str
+
+    def get_parser(self) -> LrcParser:
+        parser = LrcParser(self.lyric)
+        parser.parse_lrc(self.trans)
+        parser.parse_lrc(self.roma)
+        return parser

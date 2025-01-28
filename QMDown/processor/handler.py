@@ -9,13 +9,10 @@ import typer
 from qqmusic_api import Credential
 from qqmusic_api.login import httpx
 from qqmusic_api.login_utils import PhoneLogin, PhoneLoginEvents, QQLogin, QrCodeLoginEvents, WXLogin
-from qqmusic_api.lyric import get_lyric
-from qqmusic_api.user import User
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from QMDown import api, console
 from QMDown.model import Song, SongUrl
-from QMDown.utils.lrcparser import LrcParser
 from QMDown.utils.priority import get_priority
 from QMDown.utils.tag import Metadata, write_metadata
 from QMDown.utils.utils import show_qrcode, substitute_with_fullwidth
@@ -154,8 +151,8 @@ async def handle_login(  # noqa: C901
             logging.info(f"[green]保存 Cookies 到: {cookies_save_path}")
             await (await anyio.open_file(cookies_save_path, "w")).write(credential.as_json())
 
-        user = User(euin=credential.encrypt_uin, credential=credential)
-        user_info = (await user.get_homepage())["Info"]["BaseInfo"]
+        user = await api.get_user_detail(euin=credential.encrypt_uin, credential=credential)
+        user_info = user["Info"]["BaseInfo"]
         logging.info(f"[blue][Cookies][/] 当前登录账号: [red bold]{user_info['Name']}({credential.musicid}) ")
 
         return credential
@@ -223,23 +220,19 @@ async def handle_lyric(
             return
 
         try:
-            lyric = await get_lyric(mid=mid, qrc=qrc, trans=trans, roma=roma)
+            lyric = await api.get_lyric(mid=mid, qrc=qrc, trans=trans, roma=roma)
         except Exception as e:
             logging.error(f"[red][错误][/] 下载歌词失败: {song_name} - {e}")
             return
 
-        ori_data = lyric.get("lyric", "")
-
-        if not ori_data:
+        if not lyric.lyric:
             logging.warning(f"[yellow] {song_name} 无歌词")
             return
 
-        lyrics = LrcParser(ori_data)
-        lyrics.parse_lrc(lyric.get("trans", ""))
-        lyrics.parse_lrc(lyric.get("roma", ""))
+        parser = lyric.get_parser()
 
         async with await anyio.open_file(lyric_path, "w") as f:
-            await f.write(lyrics.dump())
+            await f.write(parser.dump())
 
         logging.info(f"[blue][完成][/] {lyric_path.name}")
 
