@@ -72,7 +72,9 @@ class AsyncDownloader:
                 async with client.stream("GET", url, timeout=self.timeout) as response:
                     response.raise_for_status()
                     async with await anyio.open_file(full_path, "wb") as f:
-                        async for chunk in response.aiter_bytes():
+                        chunk_size = 64 * 1024
+                        async for chunk in response.aiter_bytes(chunk_size):
+                            chunk_size = min(chunk_size * 2, 1024 * 1024)
                             await f.write(chunk)
                             await self.progress.update(
                                 task_id,
