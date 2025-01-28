@@ -57,18 +57,12 @@ async def tag_audio(mid: str, album_mid: str, file: Path):
             {
                 "album": [album.info.name],
                 "albumartist": [s.name for s in album.singer],
-                "totaltracks": [str(len(album.songs))],
             }
         )
 
     # 处理发行时间
     if song.time_public and song.time_public[0]:
-        metadata.update(
-            {
-                "year": [str(song.time_public[0].year)],
-                "date": [str(song.time_public[0])],
-            }
-        )
+        metadata["date"] = [str(song.time_public[0])]
     logging.debug(f"[blue][标签][/] {file}: {metadata}")
     await write_metadata(file, metadata)
 
@@ -89,6 +83,7 @@ async def handle_login(  # noqa: C901
             )
         raise typer.BadParameter("格式错误,将'musicid'与'musickey'使用':'连接")
 
+    logging.info("[blue][Cookies][/] 登录账号中...")
     if login_type:
         if login_type.lower() in ["qq", "wx"]:
             login = WXLogin() if login_type.lower() == "wx" else QQLogin()

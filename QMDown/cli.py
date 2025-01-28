@@ -5,6 +5,7 @@ from typing import Annotated
 import click
 import typer
 from qqmusic_api import Credential
+from rich.table import Table
 from typer import rich_utils
 
 from QMDown import __version__, console
@@ -53,8 +54,39 @@ def parse_cookies(value: str | None) -> Credential | None:
     return None
 
 
+def print_params(ctx: typer.Context):
+    console.print("🌈 当前运行参数:", style="bold blue")
+    table = Table(show_header=False, box=None, padding=(0, 2))
+    table.add_column("参数项", style="bold cyan", width=20)
+    table.add_column("配置值", style="yellow", overflow="fold")
+    sensitive_params = {"cookies"}
+    for name, value in ctx.params.items():
+        if value is None:
+            continue
+
+        if name in sensitive_params and value:
+            display_value = f"{value[:4]}****{value[-4:]}" if isinstance(value, str) else "****"
+        else:
+            if isinstance(value, Path):
+                display_value = f"{value.resolve()}"
+            elif isinstance(value, list):
+                display_value = "\n".join([f"{_}" for _ in value]) if value else "空列表"
+            else:
+                display_value = str(value)
+
+        if isinstance(value, bool):
+            display_value = f"[{'bold green' if value else 'bold red'}]{display_value}[/]"
+        elif isinstance(value, int):
+            display_value = f"[bold blue]{display_value}[/]"
+        param_name = f"--{name.replace('_', '-')}"
+        table.add_row(param_name, display_value)
+    console.print(table)
+    console.print("🚀 开始执行下载任务...", style="bold blue")
+
+
 @app.command()
 async def cli(  # noqa: C901
+    ctx: typer.Context,
     urls: Annotated[
         list[str],
         typer.Argument(
@@ -230,6 +262,8 @@ async def cli(  # noqa: C901
     """
     QQ 音乐解析/下载工具
     """
+    print_params(ctx)
+
     if (cookies, login_type, cookies_load_path).count(None) < 1:
         raise typer.BadParameter("选项 '--credential' , '--login' 或 '--load' 不能共用")
 
@@ -265,6 +299,10 @@ async def cli(  # noqa: C901
                 logging.info(f"Not Supported: {url}")
         # 歌曲去重
         data = {item.mid: item for item in song_data}
+
+        if len(data) == 0:
+            raise typer.Exit()
+
         # 获取歌曲链接
         status.update(f"[green bold]获取歌曲链接中[/] 共{len(data)}首...")
         song_urls, f_mids = await handle_song_urls(data, int(max_quality), credential)
