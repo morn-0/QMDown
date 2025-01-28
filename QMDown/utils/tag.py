@@ -130,3 +130,8 @@ async def write_metadata(file: str | Path, metadata: Metadata) -> None:
 
     except Exception as e:
         logging.error(f"[blue][标签][/] 处理 {file.name} 失败: {e}", exc_info=True)
+
+
+async def write_lyric(file: str | Path, lyric: str) -> None:
+    """写入歌词到音频文件"""
+    await write_metadata(file, {"lyrics": lyric})

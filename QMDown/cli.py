@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from pathlib import Path
 from typing import Annotated
@@ -12,10 +13,9 @@ from QMDown import __version__, console
 from QMDown.extractor import AlbumExtractor, SongExtractor, SonglistExtractor
 from QMDown.model import Song
 from QMDown.processor.downloader import AsyncDownloader
-from QMDown.processor.handler import handle_login, handle_lyric, handle_song_urls, tag_audio
+from QMDown.processor.handler import handle_cover, handle_login, handle_lyric, handle_metadata, handle_song_urls
 from QMDown.utils.async_typer import AsyncTyper
 from QMDown.utils.priority import SongFileTypePriority
-from QMDown.utils.tag import add_cover_to_audio
 from QMDown.utils.utils import get_real_url
 
 app = AsyncTyper(
@@ -85,7 +85,7 @@ def print_params(ctx: typer.Context):
 
 
 @app.command()
-async def cli(  # noqa: C901
+async def cli(
     ctx: typer.Context,
     urls: Annotated[
         list[str],
@@ -94,7 +94,7 @@ async def cli(  # noqa: C901
             show_default=False,
         ),
     ],
-    output_path: Annotated[
+    save_dir: Annotated[
         Path,
         typer.Option(
             "-o",
@@ -269,7 +269,45 @@ async def cli(  # noqa: C901
 
     # 登录
     credential = await handle_login(cookies, login_type, cookies_load_path, cookies_save_path)
-    # 提取歌曲信息
+
+    data = await get_song_data(urls, int(max_quality), credential)
+
+    if len(data) == 0:
+        raise typer.Exit()
+
+    logging.info(f"[blue bold][歌曲][/] 开始下载 总共 {len(data)} 首")
+
+    song_downloader = AsyncDownloader(
+        save_dir=save_dir,
+        num_workers=num_workers,
+        no_progress=no_progress,
+        overwrite=overwrite,
+    )
+
+    for song in data:
+        if song.url:
+            path = await song_downloader.add_task(
+                url=song.url.url,
+                file_name=song.info.get_full_name(),
+                file_suffix=song.url.type.e,
+            )
+            song.path = path
+
+    await song_downloader.execute_tasks()
+
+    logging.info("[blue bold][歌曲][green bold] 下载完成")
+
+    if not no_metadata:
+        await asyncio.gather(*[handle_metadata(song) for song in data])
+
+    if not no_cover:
+        await handle_cover(data, save_dir, num_workers, overwrite)
+
+    if with_lyric:
+        await handle_lyric(data, save_dir, num_workers, overwrite, with_trans, with_roma)
+
+
+async def get_song_data(urls: list[str], max_quality: int, credential: Credential | None):
     extractors = [SongExtractor(), SonglistExtractor(), AlbumExtractor()]
     song_data: list[Song] = []
     with console.status("解析链接中...") as status:
@@ -279,7 +317,7 @@ async def cli(  # noqa: C901
             if "c6.y.qq.com/base/fcgi-bin" in url:
                 url = await get_real_url(url) or url
                 if url == original_url:
-                    logging.info(f"获取真实链接失败: {original_url}")
+                    logging.info(f"[blue][Extractor][/] 获取真实链接失败: {original_url}")
                     continue
                 logging.info(f"{original_url} -> {url}")
 
@@ -287,105 +325,34 @@ async def cli(  # noqa: C901
             for extractor in extractors:
                 if extractor.suitable(url):
                     try:
-                        data = await extractor.extract(url)
-                        if isinstance(data, list):
-                            song_data.extend(data)
+                        songs = await extractor.extract(url)
+                        if isinstance(songs, list):
+                            song_data.extend(songs)
                         else:
-                            song_data.append(data)
+                            song_data.append(songs)
                     except Exception as e:
                         logging.error(f"[blue bold][{extractor.__class__.__name__}][/] {e}", exc_info=True)
                     break
             else:
                 logging.info(f"Not Supported: {url}")
         # 歌曲去重
-        data = {item.mid: item for item in song_data}
+        mids = list({item.mid: item for item in song_data}.values())
 
-        if len(data) == 0:
+        if len(mids) == 0:
             raise typer.Exit()
 
         # 获取歌曲链接
-        status.update(f"[green bold]获取歌曲链接中[/] 共{len(data)}首...")
-        song_urls, f_mids = await handle_song_urls(data, int(max_quality), credential)
+        status.update(f"[green bold]获取歌曲链接中[/] 共{len(mids)}首...")
+        data = await handle_song_urls(mids, max_quality, credential)
 
-        logging.info(f"[red]获取歌曲链接成功: {len(data) - len(f_mids)}/{len(data)}")
+        logging.info(f"[red]获取歌曲链接成功: {len(data)}/{len(mids)}")
 
-        if len(f_mids) > 0:
-            logging.info(f"[red]获取歌曲链接失败: {[data[mid].get_full_name() for mid in f_mids]}")
+        s_mids = [song.info.mid for song in data]
+        f_data = [song for song in song_data if song.mid not in s_mids]
+        if len(f_data) > 0:
+            logging.info(f"[red]获取歌曲链接失败: {[song.get_full_name() for song in f_data]}")
 
-    if len(song_urls) == 0:
-        raise typer.Exit()
-
-    # 下载歌曲
-    logging.info(f"[blue bold][歌曲][/] 开始下载 总共 {len(song_urls)} 首")
-
-    song_downloader = AsyncDownloader(
-        save_dir=output_path,
-        num_workers=num_workers,
-        no_progress=no_progress,
-        overwrite=overwrite,
-    )
-
-    tags: dict[Path, Song] = {}
-
-    for url in song_urls:
-        song = data[url.mid]
-        path = await song_downloader.add_task(
-            url=url.url.__str__(), file_name=song.get_full_name(), file_suffix=url.type.e
-        )
-        if song.album.mid or song.album.pmid:
-            tags[path] = song
-
-    await song_downloader.execute_tasks()
-
-    logging.info("[blue bold][歌曲][green bold] 下载完成")
-
-    if not no_metadata:
-        logging.info("[blue bold][标签][/] 开始添加元数据")
-        with console.status("添加元数据中..."):
-            for path, song in tags.items():
-                await tag_audio(song.mid, song.album.mid, path)
-        logging.info("[blue bold][标签][green bold] 元数据添加完成")
-
-    if not no_cover:
-        # 下载封面
-        logging.info("[blue bold][封面][/] 开始下载专辑封面")
-
-        cover_downloader = AsyncDownloader(
-            save_dir=output_path,
-            num_workers=num_workers,
-            overwrite=overwrite,
-        )
-
-        for song in tags.values():
-            await cover_downloader.add_task(
-                url=f"https://y.gtimg.cn/music/photo_new/T002R500x500M000{song.album.mid or song.album.pmid}.jpg",
-                file_name=song.get_full_name(),
-                file_suffix=".jpg",
-            )
-
-        await cover_downloader.execute_tasks()
-
-        logging.info("[blue bold][封面][green bold] 专辑封面下载完成")
-
-        logging.info("[blue bold][封面][/] 开始嵌入专辑封面")
-        with console.status("嵌入封面中..."):
-            for path, song in tags.items():
-                cover_path = path.with_suffix(".jpg")
-                await add_cover_to_audio(path, cover_path)
-        logging.info("[blue bold][封面][green bold] 专辑封面嵌入完成")
-
-    # 下载歌词
-    if with_lyric:
-        logging.info("[blue bold][歌词][/] 开始下载")
-        await handle_lyric(
-            {url.mid: data[url.mid] for url in song_urls},
-            save_dir=output_path,
-            num_workers=num_workers,
-            overwrite=overwrite,
-            trans=with_trans,
-            roma=with_roma,
-        )
-        logging.info("[blue bold][歌词][green bold] 下载完成")
+    return data
 
 
 if __name__ == "__main__":

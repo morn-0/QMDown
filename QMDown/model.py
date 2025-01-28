@@ -1,4 +1,5 @@
 from datetime import date
+from pathlib import Path
 from typing import Annotated
 
 from pydantic import AliasChoices, AliasPath, BaseModel, BeforeValidator, Field, model_validator
@@ -152,3 +153,11 @@ class Lyric(BaseModel):
         parser.parse_lrc(self.trans)
         parser.parse_lrc(self.roma)
         return parser
+
+
+class SongData(BaseModel):
+    info: Song
+    path: Path | None = None
+    url: SongUrl | None = None
+    cover: Path | None = None
+    lyric: Path | None = None

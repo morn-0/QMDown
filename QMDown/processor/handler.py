@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import os
 from io import BytesIO
 from pathlib import Path
 
@@ -12,22 +11,19 @@ from qqmusic_api.login_utils import PhoneLogin, PhoneLoginEvents, QQLogin, QrCod
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from QMDown import api, console
-from QMDown.model import Song, SongUrl
+from QMDown.model import Song, SongData
+from QMDown.processor.downloader import AsyncDownloader
 from QMDown.utils.priority import get_priority
-from QMDown.utils.tag import Metadata, write_metadata
+from QMDown.utils.tag import Metadata, add_cover_to_audio, write_metadata
 from QMDown.utils.utils import show_qrcode, substitute_with_fullwidth
 
 
-async def tag_audio(mid: str, album_mid: str, file: Path):
-    """给音频文件添加元数据
+async def handle_metadata(data: SongData):
+    if not data.path:
+        return
 
-    Args:
-        mid: 歌曲 mid
-        album_mid: 专辑 mid
-        file: 音频文件路径
-    """
-    song_task = asyncio.create_task(api.get_song_detail(mid))
-    album_task = asyncio.create_task(api.get_album_detail(mid=album_mid)) if album_mid else None
+    song_task = asyncio.create_task(api.get_song_detail(data.info.mid))
+    album_task = asyncio.create_task(api.get_album_detail(mid=data.info.album.mid)) if data.info.album.mid else None
 
     # 处理歌曲信息
     song = await song_task
@@ -60,141 +56,191 @@ async def tag_audio(mid: str, album_mid: str, file: Path):
     # 处理发行时间
     if song.time_public and song.time_public[0]:
         metadata["date"] = [str(song.time_public[0])]
-    logging.debug(f"[blue][标签][/] {file}: {metadata}")
-    await write_metadata(file, metadata)
+    logging.debug(f"[blue][标签][/] {data.path}: {metadata}")
+    await write_metadata(data.path, metadata)
 
 
-async def handle_login(  # noqa: C901
+async def handle_cover(data: list[SongData], save_dir: Path | str, num_workers: int, overwrite: bool):
+    # 下载封面
+    logging.info("[blue bold][封面][/] 开始下载专辑封面")
+
+    cover_downloader = AsyncDownloader(
+        save_dir=save_dir,
+        num_workers=num_workers,
+        overwrite=overwrite,
+    )
+
+    for song in data:
+        if song.path and song.path.exists():
+            if mid := song.info.album.mid or song.info.album.pmid:
+                song.cover = await cover_downloader.add_task(
+                    url=f"https://y.gtimg.cn/music/photo_new/T002R500x500M000{mid}.jpg",
+                    file_name=song.info.get_full_name(),
+                    file_suffix=".jpg",
+                )
+
+    await cover_downloader.execute_tasks()
+
+    logging.info("[blue bold][封面][green bold] 专辑封面下载完成")
+
+    logging.info("[blue bold][封面][/] 开始嵌入专辑封面")
+    with console.status("嵌入封面中..."):
+        await asyncio.gather(*[add_cover_to_audio(song.path, song.cover) for song in data if song.path and song.cover])
+    logging.info("[blue bold][封面][green bold] 专辑封面嵌入完成")
+
+
+async def handle_login(
     cookies: str | None = None,
     login_type: str | None = None,
     cookies_load_path: Path | None = None,
     cookies_save_path: Path | None = None,
 ) -> Credential | None:
-    credential = None
-    if cookies:
-        if ":" in cookies:
-            data = cookies.split(":")
-            credential = Credential(
-                musicid=int(data[0]),
-                musickey=data[1],
-            )
-        raise typer.BadParameter("格式错误,将'musicid'与'musickey'使用':'连接")
+    credential = await _handle_cookie_login(cookies, cookies_load_path)
+    if credential:
+        return await _finalize_credential(credential, cookies_load_path, cookies_save_path)
 
-    logging.info("[blue][Cookies][/] 登录账号中...")
-    if login_type:
-        if login_type.lower() in ["qq", "wx"]:
-            login = WXLogin() if login_type.lower() == "wx" else QQLogin()
-            logging.info(f"二维码登录 [red]{login.__class__.__name__}")
-            with console.status("获取二维码中...") as status:
-                qrcode = BytesIO(await login.get_qrcode())
+    if not login_type:
+        return None
+
+    login_type = login_type.lower()
+    if login_type in ("qq", "wx"):
+        credential = await _qr_code_login(login_type)
+    elif login_type == "phone":
+        credential = await _phone_login()
+    else:
+        raise ValueError(f"不支持的登录方式: {login_type}")
+
+    return await _finalize_credential(credential, cookies_load_path, cookies_save_path)
+
+
+async def _qr_code_login(login_type: str) -> Credential | None:
+    login_cls = WXLogin if login_type == "wx" else QQLogin
+    login = login_cls()
+
+    logging.info(f"[blue][二维码登录] [red]{login.__class__.__name__}")
+    with console.status("获取二维码中...") as status:
+        qrcode = BytesIO(await login.get_qrcode())
+        status.stop()
+        show_qrcode(qrcode)
+        status.update(f"[red]请使用[blue] {login_type.upper()} [red]扫描二维码登录")
+        status.start()
+
+        while True:
+            state, credential = await login.check_qrcode_state()
+            if state == QrCodeLoginEvents.DONE:
                 status.stop()
-                show_qrcode(qrcode)
-                status.update(f"[red]请使用[blue] {login_type.upper()} [red]扫描二维码登录")
+                logging.info(f"[blue][{login_type.upper()}][green]登录成功")
+                return credential
+            if state in (QrCodeLoginEvents.REFUSE, QrCodeLoginEvents.TIMEOUT):
+                error_msg = "二维码登录被拒绝" if state == QrCodeLoginEvents.REFUSE else "二维码登录超时"
+                logging.warning(f"[blue][{login_type.upper()}][yellow]{error_msg}")
+                raise typer.Exit(code=1)
+            if state == QrCodeLoginEvents.CONF:
+                status.update("[red]请确认登录")
+            await asyncio.sleep(1)
+
+
+async def _phone_login() -> Credential:
+    phone = typer.prompt("请输入手机号", type=int)
+    login = PhoneLogin(phone)
+
+    with console.status("获取验证码中...") as status:
+        while True:
+            state = await login.send_authcode()
+            if state == PhoneLoginEvents.SEND:
+                logging.info("[blue][手机号登录][red]验证码发送成功")
+                break
+            if state == PhoneLoginEvents.CAPTCHA:
+                logging.info("[blue][手机号登录][red]需要滑块验证")
+                if not login.auth_url:
+                    logging.warning("[blue][手机号登录][yellow]获取验证链接失败")
+                    raise typer.Exit(code=1)
+                logging.info(f"请复制链接前往浏览器验证:{login.auth_url}")
+                status.stop()
+                typer.confirm("验证后请回车", prompt_suffix="", show_default=False)
                 status.start()
-                while True:
-                    state, credential = await login.check_qrcode_state()
-                    if state == QrCodeLoginEvents.REFUSE:
-                        logging.warning("[yellow]二维码登录被拒绝")
-                        return None
-                    if state == QrCodeLoginEvents.CONF:
-                        status.update("[red]请确认登录")
-                    if state == QrCodeLoginEvents.TIMEOUT:
-                        logging.warning("[yellow]二维码登录超时")
-                        return None
-                    if state == QrCodeLoginEvents.DONE:
-                        status.stop()
-                        logging.info(f"[blue]{login_type.upper()}[green]登录成功")
-                    await asyncio.sleep(1)
-        else:
-            phone = typer.prompt("请输入手机号", type=int)
-            login = PhoneLogin(int(phone))
-            with console.status("获取验证码中...") as status:
-                while True:
-                    state = await login.send_authcode()
-                    if state == PhoneLoginEvents.SEND:
-                        logging.info("[red]验证码发送成功")
-                        break
-                    if state == PhoneLoginEvents.CAPTCHA:
-                        logging.info("[red]需要滑块验证")
-                        if login.auth_url is None:
-                            logging.warning("[yellow]获取验证链接失败")
-                            return None
-                        logging.info(f"请复制链接前往浏览器验证:{login.auth_url}")
-                        status.stop()
-                        typer.confirm("验证后请回车", prompt_suffix="", show_default=False)
-                        status.start()
-                    else:
-                        logging.warning("[yellow]登录失败(未知情况)")
-                        return None
-            code = typer.prompt("请输入验证码", type=int)
-            try:
-                credential = await login.authorize(code)
-            except Exception:
-                logging.warning("[yellow]验证码错误或已过期")
-                return None
+            else:
+                logging.warning("[blue][手机号登录][yellow]登录失败(未知情况)")
+                raise typer.Exit(code=1)
+
+    code = typer.prompt("请输入验证码", type=int)
+    try:
+        return await login.authorize(code)
+    except Exception:
+        logging.warning("[blue][手机号登录][yellow]验证码错误或已过期")
+        raise typer.Exit(code=1)
+
+
+async def _handle_cookie_login(cookies: str | None, cookies_load_path: Path | None) -> Credential | None:
+    if cookies:
+        if ":" not in cookies:
+            raise typer.BadParameter("格式错误,将'musicid'与'musickey'使用':'连接")
+        data = cookies.split(":")
+        return Credential(musicid=int(data[0]), musickey=data[1])
 
     if cookies_load_path:
-        credential = Credential.from_cookies_str(await (await anyio.open_file(cookies_load_path)).read())
-
-    if credential:
-        if await credential.is_expired():
-            logging.warning("[yellow]Cookies 已过期,正在尝试刷新...")
-            if await credential.refresh():
-                logging.info("[green]Cookies 刷新成功")
-                if cookies_load_path and os.access(cookies_load_path, os.W_OK):
-                    cookies_save_path = cookies_load_path
-                else:
-                    logging.warning("[yellow]Cookies 刷新失败")
-
-        # 保存 Cookies
-        if cookies_save_path:
-            logging.info(f"[green]保存 Cookies 到: {cookies_save_path}")
-            await (await anyio.open_file(cookies_save_path, "w")).write(credential.as_json())
-
-        user = await api.get_user_detail(euin=credential.encrypt_uin, credential=credential)
-        user_info = user["Info"]["BaseInfo"]
-        logging.info(f"[blue][Cookies][/] 当前登录账号: [red bold]{user_info['Name']}({credential.musicid}) ")
-
-        return credential
-
+        return Credential.from_cookies_str(await (await anyio.open_file(cookies_load_path)).read())
     return None
 
 
+async def _finalize_credential(
+    credential: Credential | None, cookies_load_path: Path | None, cookies_save_path: Path | None
+) -> Credential | None:
+    if credential:
+        if await credential.is_expired():
+            logging.warning("[yellow]Cookies 已过期,正在尝试刷新...")
+            if not await credential.refresh():
+                logging.warning("[yellow]Cookies 刷新失败")
+                return None
+            logging.info("[green]Cookies 刷新成功")
+
+            if cookies_load_path and cookies_load_path.exists():
+                cookies_save_path = cookies_load_path
+
+            if cookies_save_path:
+                logging.info(f"[green]保存 Cookies 到: {cookies_save_path}")
+                await (await anyio.open_file(cookies_save_path, "w")).write(credential.as_json())
+
+        user = await api.get_user_detail(euin=credential.encrypt_uin, credential=credential)
+        user_info = user["Info"]["BaseInfo"]
+        logging.info(f"[blue][Cookies][/] 当前登录账号: [red bold]{user_info['Name']}({credential.musicid})")
+
+    return credential
+
+
 async def handle_song_urls(
-    data: dict[str, Song],
+    songs: list[Song],
     max_quality: int,
     credential: Credential | None,
-) -> tuple[list[SongUrl], list[str]]:
+) -> list[SongData]:
     qualities = get_priority(max_quality)
-    all_mids = [song.mid for song in data.values()]
-    success_urls: list[SongUrl] = []
-    pending_mids = all_mids.copy()
+    pending_mids = [song.mid for song in songs]
+    data: list[SongData] = []
     for current_quality in qualities:
         if not pending_mids:
             break
+
         try:
             batch_urls = await api.get_download_url(mids=pending_mids, quality=current_quality, credential=credential)
             url_map = {url.mid: url for url in batch_urls if url.url}
-            succeeded = []
-            remaining = []
+            new_pending_mids = []
             for mid in pending_mids:
                 if mid in url_map:
-                    succeeded.append(url_map[mid])
+                    song_data = next(s for s in songs if s.mid == mid)
+                    data.append(SongData(info=song_data, url=url_map[mid]))
                 else:
-                    remaining.append(mid)
-            success_urls.extend(succeeded)
-            pending_mids = remaining
-
-            logging.info(f"[blue][{current_quality.name}]:[/] 获取成功数量: {len(succeeded)}")
+                    new_pending_mids.append(mid)
+            logging.info(f"[blue][{current_quality.name}]:[/] 获取成功数量: {len(url_map)}/{len(pending_mids)}")
+            pending_mids = new_pending_mids
         except Exception as e:
-            logging.error(f"[blue][{current_quality.name}]:[/] {e}")
+            logging.error(f"[blue][{current_quality.name}]:[/] {e}", exc_info=True)
             continue
 
-    return success_urls, pending_mids
+    return data
 
 
 async def handle_lyric(
-    data: dict[str, Song],
+    data: list[SongData],
     save_dir: str | Path = ".",
     num_workers: int = 3,
     overwrite: bool = False,
@@ -204,6 +250,8 @@ async def handle_lyric(
 ):
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
+    data_dict = {item.info.mid: item for item in data}
+    semaphore = asyncio.Semaphore(num_workers)
 
     @retry(
         stop=stop_after_attempt(3),
@@ -211,36 +259,37 @@ async def handle_lyric(
         retry=retry_if_exception_type((httpx.RequestError, httpx.ReadTimeout, httpx.ConnectTimeout)),
     )
     async def download_lyric(mid: str):
-        song = data[mid]
-        song_name = song.get_full_name()
-        lyric_path = save_dir / f"{substitute_with_fullwidth(song_name)}.lrc"
-
-        if not overwrite and lyric_path.exists():
-            logging.info(f"[blue][跳过][/] {lyric_path.name}")
-            return
-
-        try:
-            lyric = await api.get_lyric(mid=mid, qrc=qrc, trans=trans, roma=roma)
-        except Exception as e:
-            logging.error(f"[red][错误][/] 下载歌词失败: {song_name} - {e}")
-            return
-
-        if not lyric.lyric:
-            logging.warning(f"[yellow] {song_name} 无歌词")
-            return
-
-        parser = lyric.get_parser()
-
-        async with await anyio.open_file(lyric_path, "w") as f:
-            await f.write(parser.dump())
-
-        logging.info(f"[blue][完成][/] {lyric_path.name}")
-
-    semaphore = asyncio.Semaphore(num_workers)
-
-    async def safe_download(mid: str):
         async with semaphore:
-            await download_lyric(mid)
+            song_data = data_dict.get(mid)
+            if not song_data:
+                logging.error(f"[red][错误][/] 未找到对应歌曲: MID={mid}")
+                return None
+
+            song = song_data.info
+            song_name = song.get_full_name()
+            lyric_path = save_dir / f"{substitute_with_fullwidth(song_name)}.lrc"
+
+            if not overwrite and lyric_path.exists():
+                logging.info(f"[blue][跳过][/] {lyric_path.name}")
+                return None
+
+            try:
+                lyric = await api.get_lyric(mid=mid, qrc=qrc, trans=trans, roma=roma)
+            except Exception as e:
+                logging.error(f"[blue][歌词][/] 下载歌词失败: {song_name} - {e}", exc_info=True)
+                return None
+
+            if not lyric.lyric:
+                logging.warning(f"[yellow] {song_name} 无歌词")
+                return None
+
+            parser = lyric.get_parser()
+            async with await anyio.open_file(lyric_path, "w") as f:
+                await f.write(parser.dump())
+
+            logging.info(f"[blue][完成][/] {lyric_path.name}")
+            return lyric_path
 
     with console.status("下载歌词中..."):
-        await asyncio.gather(*(safe_download(song.mid) for song in data.values()))
+        # 直接生成 download_lyric 任务
+        await asyncio.gather(*(download_lyric(song_data.info.mid) for song_data in data))
