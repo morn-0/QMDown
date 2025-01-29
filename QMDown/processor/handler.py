@@ -276,7 +276,7 @@ async def handle_lyric(  # noqa: C901
 
             if not overwrite and lyric_path.exists():
                 logging.info(f"[blue][歌词][/] [red]跳过 [cyan]{lyric_path.name}[/] [/]- 歌词已存在")
-                return None
+                return lyric_path
 
             try:
                 lyric = await api.get_lyric(mid=song.info.mid, qrc=qrc, trans=trans, roma=roma)
