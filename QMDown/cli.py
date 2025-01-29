@@ -282,7 +282,7 @@ async def cli(
     if len(data) == 0:
         raise typer.Exit()
 
-    logging.info(f"[blue bold][歌曲][/] 开始下载 总共 {len(data)} 首")
+    logging.info(f"[blue][歌曲][/] 开始下载 总共 {len(data)} 首")
 
     song_downloader = AsyncDownloader(
         save_dir=output,
@@ -302,7 +302,7 @@ async def cli(
 
     await song_downloader.execute_tasks()
 
-    logging.info("[blue bold][歌曲][green bold] 下载完成")
+    logging.info("[blue][歌曲][green bold] 下载完成")
 
     if not no_metadata:
         await handle_metadata(data)
@@ -349,7 +349,7 @@ async def get_song_data(urls: list[str], max_quality: int, credential: Credentia
             raise typer.Exit()
 
         # 获取歌曲链接
-        status.update(f"[green bold]获取歌曲链接中[/] 共{len(mids)}首...")
+        status.update(f"[green]获取歌曲链接中[/] 共{len(mids)}首...")
         data = await handle_song_urls(mids, max_quality, credential)
 
         logging.info(f"[red]获取歌曲链接成功: {len(data)}/{len(mids)}")
