@@ -211,7 +211,7 @@ async def handle_metadata(data: list[SongData]):
         logging.debug(f"[blue][元数据][/] {data.path}: {metadata}")
         await write_metadata(data.path, metadata)
 
-    with console.status("添加元数据中...[/]"):
+    with console.status("添加元数据中..."):
         await asyncio.gather(*[_add(song) for song in data])
     logging.info("[blue][元数据][green] 元数据添加完成")
 
@@ -245,10 +245,11 @@ async def handle_cover(data: list[SongData], save_dir: Path | str, num_workers: 
     logging.info("[blue][封面][green] 专辑封面嵌入完成")
 
 
-async def handle_lyric(
+async def handle_lyric(  # noqa: C901
     data: list[SongData],
     save_dir: str | Path = ".",
     no_embed: bool = False,
+    no_del_lyric: bool = False,
     num_workers: int = 3,
     overwrite: bool = False,
     trans: bool = False,
@@ -305,7 +306,8 @@ async def handle_lyric(
             async with await open_file(lyric_path, "r") as f:
                 await write_lyric(song.path, await f.read())
             logging.debug(f"[blue][歌词][/] 歌词嵌入成功: [cyan]{song.info.get_full_name()}")
-            lyric_path.unlink(missing_ok=True)
+            if not no_del_lyric:
+                lyric_path.unlink(missing_ok=True)
 
     logging.info("[blue][歌词][/] 开始下载歌词")
 

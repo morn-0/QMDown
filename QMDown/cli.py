@@ -167,6 +167,14 @@ async def cli(
             rich_help_panel="[blue bold]Lyric[/] [green bold]歌词",
         ),
     ] = False,
+    no_del_lyric: Annotated[
+        bool,
+        typer.Option(
+            "--no-del-lyric",
+            help="禁用嵌入歌词文件后删除",
+            rich_help_panel="[blue bold]Lyric[/] [green bold]歌词",
+        ),
+    ] = False,
     no_metadata: Annotated[
         bool,
         typer.Option(
@@ -312,7 +320,7 @@ async def cli(
         await handle_cover(data, output, num_workers, overwrite)
 
     if lyric:
-        await handle_lyric(data, output, no_embed_lyric, num_workers, overwrite, trans, roma)
+        await handle_lyric(data, output, no_embed_lyric, no_del_lyric, num_workers, overwrite, trans, roma)
 
 
 async def get_song_data(urls: list[str], max_quality: int, credential: Credential | None) -> list[SongData]:
