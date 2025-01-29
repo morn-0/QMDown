@@ -14,7 +14,7 @@ from QMDown import api, console
 from QMDown.model import Song, SongData
 from QMDown.processor.downloader import AsyncDownloader
 from QMDown.utils.priority import get_priority
-from QMDown.utils.tag import Metadata, add_cover_to_audio, write_metadata
+from QMDown.utils.tag import Metadata, add_cover_to_audio, write_lyric, write_metadata
 from QMDown.utils.utils import show_qrcode, substitute_with_fullwidth
 
 
@@ -242,6 +242,7 @@ async def handle_song_urls(
 async def handle_lyric(
     data: list[SongData],
     save_dir: str | Path = ".",
+    no_embed: bool = False,
     num_workers: int = 3,
     overwrite: bool = False,
     trans: bool = False,
@@ -250,7 +251,6 @@ async def handle_lyric(
 ):
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
-    data_dict = {item.info.mid: item for item in data}
     semaphore = asyncio.Semaphore(num_workers)
 
     @retry(
@@ -258,38 +258,59 @@ async def handle_lyric(
         wait=wait_exponential(multiplier=1, min=2, max=10),
         retry=retry_if_exception_type((httpx.RequestError, httpx.ReadTimeout, httpx.ConnectTimeout)),
     )
-    async def download_lyric(mid: str):
+    async def download_lyric(song: SongData):
+        """下载歌词并保存到文件"""
         async with semaphore:
-            song_data = data_dict.get(mid)
-            if not song_data:
-                logging.error(f"[red][错误][/] 未找到对应歌曲: MID={mid}")
+            if not song.path or not song.path.exists():
                 return None
 
-            song = song_data.info
-            song_name = song.get_full_name()
+            song_name = song.info.get_full_name()
             lyric_path = save_dir / f"{substitute_with_fullwidth(song_name)}.lrc"
 
             if not overwrite and lyric_path.exists():
-                logging.info(f"[blue][跳过][/] {lyric_path.name}")
+                logging.info(f"[blue][跳过][/] {lyric_path.name} - 歌词已存在")
                 return None
 
             try:
-                lyric = await api.get_lyric(mid=mid, qrc=qrc, trans=trans, roma=roma)
+                lyric = await api.get_lyric(mid=song.info.mid, qrc=qrc, trans=trans, roma=roma)
             except Exception as e:
-                logging.error(f"[blue][歌词][/] 下载歌词失败: {song_name} - {e}", exc_info=True)
+                logging.error(f"[blue][歌词][/] {song_name} - 下载歌词出错: {e}", exc_info=True)
                 return None
 
             if not lyric.lyric:
-                logging.warning(f"[yellow] {song_name} 无歌词")
+                logging.warning(f"[blue][歌词][/] {song_name} - 未找到歌词")
                 return None
 
-            parser = lyric.get_parser()
             async with await anyio.open_file(lyric_path, "w") as f:
-                await f.write(parser.dump())
+                await f.write(lyric.get_parser().dump())
 
-            logging.info(f"[blue][完成][/] {lyric_path.name}")
-            return lyric_path
+            if no_embed:
+                logging.info(f"[blue][完成][/] 歌词已保存: {lyric_path.name}")
 
-    with console.status("下载歌词中..."):
-        # 直接生成 download_lyric 任务
-        await asyncio.gather(*(download_lyric(song_data.info.mid) for song_data in data))
+            return lyric_path if not no_embed else None
+
+    async def embed_lyric(song: SongData, lyric_path: Path):
+        """嵌入歌词到音频文件"""
+        async with semaphore:
+            if not song.path or not song.path.exists() or not lyric_path.exists():
+                return
+
+            logging.debug(f"[blue][歌词][/] 正在嵌入歌词: {song.info.get_full_name()}")
+            async with await anyio.open_file(lyric_path, "r") as f:
+                lyric_text = await f.read()
+            lyric_path.unlink()
+            await write_lyric(song.path, lyric_text)
+            logging.debug(f"[blue][歌词][/] 歌词嵌入成功: {song.info.get_full_name()}")
+
+    logging.info("[blue][歌词][/] 开始下载歌词")
+    with console.status("[bold blue]下载歌词中...[/]"):
+        lyric_tasks = [download_lyric(song) for song in data]
+        lyric_results = await asyncio.gather(*lyric_tasks)
+    logging.info("[blue][歌词][/] [green]歌词下载完成")
+
+    if not no_embed:
+        logging.info("[blue][歌词][/] 开始嵌入歌词")
+        with console.status("[bold blue]嵌入歌词中...[/]"):
+            embed_tasks = [embed_lyric(song, lyric_path) for song, lyric_path in zip(data, lyric_results) if lyric_path]
+            await asyncio.gather(*embed_tasks)
+        logging.info("[blue][歌词][/] [green]歌词嵌入完成")

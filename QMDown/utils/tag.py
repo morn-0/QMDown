@@ -8,8 +8,10 @@ from anyio import to_thread
 from mutagen._file import File
 from mutagen.flac import FLAC, Picture
 from mutagen.id3 import ID3
-from mutagen.id3._frames import APIC
+from mutagen.id3._frames import APIC, USLT
+from mutagen.id3._specs import Encoding
 from mutagen.id3._util import ID3NoHeaderError
+from mutagen.mp3 import MP3
 from mutagen.mp4 import MP4, MP4Cover
 from mutagen.oggopus import OggOpus
 from mutagen.oggvorbis import OggVorbis
@@ -30,7 +32,6 @@ async def add_cover_to_audio(audio_path: str | Path, cover_path: str | Path, rem
     cover_path = Path(cover_path)
 
     if not audio_path.exists() or not cover_path.exists():
-        logging.debug(f"[blue][封面][/] 封面文件不存在: {cover_path}")
         return
 
     try:
@@ -49,7 +50,7 @@ async def add_cover_to_audio(audio_path: str | Path, cover_path: str | Path, rem
             await to_thread.run_sync(cover_path.unlink, True)
 
 
-async def _process_audio_cover(ext: str, path: Path, data: bytes, mime: str):  # noqa: C901
+async def _process_audio_cover(ext: str, path: Path, data: bytes, mime: str):
     """统一处理不同音频格式的封面添加"""
 
     def _create_picture():
@@ -58,50 +59,30 @@ async def _process_audio_cover(ext: str, path: Path, data: bytes, mime: str):  #
         return pic
 
     if ext == ".mp3":
-
-        def _mp3():
-            try:
-                audio = ID3(path)
-            except ID3NoHeaderError:
-                audio = ID3()
-            audio.delall("APIC")
-            audio.add(APIC(encoding=0, mime=mime, type=3, desc="Cover", data=data))
-            audio.save(path, v2_version=3)
-
-        await to_thread.run_sync(_mp3)
-
+        try:
+            audio = ID3(path)
+        except ID3NoHeaderError:
+            audio = ID3()
+        audio.delall("APIC")
+        audio.add(APIC(encoding=0, mime=mime, type=3, desc="Cover", data=data))
+        audio.save(path, v2_version=3)
     elif ext in (".flac", ".oga"):
-
-        def _flac():
-            audio = FLAC(path)
-            audio.clear_pictures()
-            audio.add_picture(_create_picture())
-            audio.save()
-
-        await to_thread.run_sync(_flac)
-
+        audio = FLAC(path)
+        audio.clear_pictures()
+        audio.add_picture(_create_picture())
+        audio.save()
     elif ext in (".ogg", ".opus"):
-
-        def _ogg():
-            audio = File(path)
-            if not isinstance(audio, OggOpus | OggVorbis):
-                raise ValueError(f"不支持的 Ogg 格式: {path.suffix}")
-            pic = _create_picture()
-            audio["metadata_block_picture"] = [base64.b64encode(pic.write()).decode()]
-            audio.save()
-
-        await to_thread.run_sync(_ogg)
-
+        audio = File(path)
+        if not isinstance(audio, OggOpus | OggVorbis):
+            raise ValueError(f"不支持的 Ogg 格式: {path.suffix}")
+        pic = _create_picture()
+        audio["metadata_block_picture"] = [base64.b64encode(pic.write()).decode()]
+        audio.save()
     elif ext in (".m4a", ".aac", ".mp4"):
-
-        def _aac():
-            audio = MP4(path)
-            fmt = MP4Cover.FORMAT_JPEG if mime == "image/jpeg" else MP4Cover.FORMAT_PNG
-            audio["covr"] = [MP4Cover(data, fmt)]
-            audio.save()
-
-        await to_thread.run_sync(_aac)
-
+        audio = MP4(path)
+        fmt = MP4Cover.FORMAT_JPEG if mime == "image/jpeg" else MP4Cover.FORMAT_PNG
+        audio["covr"] = [MP4Cover(data, fmt)]
+        audio.save()
     else:
         logging.debug(f"[blue][封面][/] 不支持的音频格式: {path}")
 
@@ -134,4 +115,28 @@ async def write_metadata(file: str | Path, metadata: Metadata) -> None:
 
 async def write_lyric(file: str | Path, lyric: str) -> None:
     """写入歌词到音频文件"""
-    await write_metadata(file, {"lyrics": lyric})
+    file = Path(file)
+    if not file.exists() or not lyric:
+        return
+
+    ext = Path(file).suffix.lower()
+    if ext == ".mp3":
+        audio = MP3(file, ID3=ID3)
+        if audio.tags is None:
+            audio.tags = ID3()
+        audio.tags.add(USLT(encoding=Encoding.UTF8, desc="", text=lyric))
+        audio.save()
+    elif ext in (".flac", ".oga"):
+        audio = FLAC(file)
+        audio["LYRICS"] = lyric
+        audio.save()
+    elif ext in (".ogg", ".opus"):
+        audio = OggVorbis(file)
+        audio["LYRICS"] = lyric
+        audio.save()
+    elif ext in (".m4a", ".aac", ".mp4"):
+        audio = MP4(file)
+        audio["\xa9lyr"] = lyric
+        audio.save()
+    else:
+        logging.debug(f"[blue][歌词][/] 不支持的音频格式: {file}")

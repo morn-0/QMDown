@@ -94,7 +94,7 @@ async def cli(
             show_default=False,
         ),
     ],
-    save_dir: Annotated[
+    output: Annotated[
         Path,
         typer.Option(
             "-o",
@@ -115,7 +115,7 @@ async def cli(
             min=1,
         ),
     ] = 8,
-    max_quality: Annotated[
+    quality: Annotated[
         str,
         typer.Option(
             "-q",
@@ -136,7 +136,7 @@ async def cli(
             rich_help_panel="[blue bold]Download[/] [green bold]下载",
         ),
     ] = False,
-    with_lyric: Annotated[
+    lyric: Annotated[
         bool,
         typer.Option(
             "--lyric",
@@ -144,7 +144,7 @@ async def cli(
             rich_help_panel="[blue bold]Lyric[/] [green bold]歌词",
         ),
     ] = False,
-    with_trans: Annotated[
+    trans: Annotated[
         bool,
         typer.Option(
             "--trans",
@@ -152,11 +152,19 @@ async def cli(
             rich_help_panel="[blue bold]Lyric[/] [green bold]歌词",
         ),
     ] = False,
-    with_roma: Annotated[
+    roma: Annotated[
         bool,
         typer.Option(
             "--roma",
             help="下载罗马音歌词(需配合`--lyric`使用)",
+            rich_help_panel="[blue bold]Lyric[/] [green bold]歌词",
+        ),
+    ] = False,
+    no_embed_lyric: Annotated[
+        bool,
+        typer.Option(
+            "--no-embed-lyric",
+            help="禁用歌词文件嵌入",
             rich_help_panel="[blue bold]Lyric[/] [green bold]歌词",
         ),
     ] = False,
@@ -187,7 +195,7 @@ async def cli(
             rich_help_panel="[blue bold]Authentication[/] [green bold]认证管理",
         ),
     ] = None,
-    login_type: Annotated[
+    login: Annotated[
         str | None,
         typer.Option(
             "--login",
@@ -200,7 +208,7 @@ async def cli(
             show_default=False,
         ),
     ] = None,
-    cookies_load_path: Annotated[
+    load: Annotated[
         Path | None,
         typer.Option(
             "--load",
@@ -211,7 +219,7 @@ async def cli(
             show_default=False,
         ),
     ] = None,
-    cookies_save_path: Annotated[
+    save: Annotated[
         Path | None,
         typer.Option(
             "--save",
@@ -264,13 +272,13 @@ async def cli(
     """
     print_params(ctx)
 
-    if (cookies, login_type, cookies_load_path).count(None) < 1:
+    if (cookies, login, load).count(None) < 1:
         raise typer.BadParameter("选项 '--credential' , '--login' 或 '--load' 不能共用")
 
     # 登录
-    credential = await handle_login(cookies, login_type, cookies_load_path, cookies_save_path)
+    credential = await handle_login(cookies, login, load, save)
 
-    data = await get_song_data(urls, int(max_quality), credential)
+    data = await get_song_data(urls, int(quality), credential)
 
     if len(data) == 0:
         raise typer.Exit()
@@ -278,7 +286,7 @@ async def cli(
     logging.info(f"[blue bold][歌曲][/] 开始下载 总共 {len(data)} 首")
 
     song_downloader = AsyncDownloader(
-        save_dir=save_dir,
+        save_dir=output,
         num_workers=num_workers,
         no_progress=no_progress,
         overwrite=overwrite,
@@ -301,10 +309,10 @@ async def cli(
         await asyncio.gather(*[handle_metadata(song) for song in data])
 
     if not no_cover:
-        await handle_cover(data, save_dir, num_workers, overwrite)
+        await handle_cover(data, output, num_workers, overwrite)
 
-    if with_lyric:
-        await handle_lyric(data, save_dir, num_workers, overwrite, with_trans, with_roma)
+    if lyric:
+        await handle_lyric(data, output, no_embed_lyric, num_workers, overwrite, trans, roma)
 
 
 async def get_song_data(urls: list[str], max_quality: int, credential: Credential | None):
