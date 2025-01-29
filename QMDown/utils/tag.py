@@ -3,8 +3,7 @@ import logging
 import mimetypes
 from pathlib import Path
 
-import anyio
-from anyio import to_thread
+from anyio import open_file
 from mutagen._file import File
 from mutagen.flac import FLAC, Picture
 from mutagen.id3 import ID3
@@ -35,9 +34,9 @@ async def add_cover_to_audio(audio_path: str | Path, cover_path: str | Path, rem
         return
 
     try:
-        async with await anyio.open_file(cover_path, "rb") as f:
+        async with await open_file(cover_path, "rb") as f:
             cover_data = await f.read()
-        mime_type, _ = await to_thread.run_sync(mimetypes.guess_type, cover_path)
+        mime_type, _ = mimetypes.guess_type(cover_path)
         if mime_type not in ("image/jpeg", "image/png", "image/webp"):
             logging.debug(f"[blue][封面][/] 不支持的图片格式: {mime_type}")
             return
@@ -47,7 +46,7 @@ async def add_cover_to_audio(audio_path: str | Path, cover_path: str | Path, rem
         logging.error(f"[blue][封面][/] 处理 {audio_path.name} 失败: {e}", exc_info=True)
     finally:
         if remove and cover_path.exists:
-            await to_thread.run_sync(cover_path.unlink, True)
+            cover_path.unlink(True)
 
 
 async def _process_audio_cover(ext: str, path: Path, data: bytes, mime: str):
@@ -106,7 +105,7 @@ async def write_metadata(file: str | Path, metadata: Metadata) -> None:
             except (KeyError, ValueError, TypeError) as e:
                 logging.debug(f"[blue][标签][/] {key}={value} 写入失败: {e}")
 
-        await to_thread.run_sync(audio.save)
+        audio.save()
         logging.debug(f"[blue][标签][/] 元数据写入成功: {file.name}")
 
     except Exception as e:

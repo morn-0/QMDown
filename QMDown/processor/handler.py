@@ -3,8 +3,8 @@ import logging
 from io import BytesIO
 from pathlib import Path
 
-import anyio
 import typer
+from anyio import open_file
 from qqmusic_api import Credential
 from qqmusic_api.login import httpx
 from qqmusic_api.login_utils import PhoneLogin, PhoneLoginEvents, QQLogin, QrCodeLoginEvents, WXLogin
@@ -179,7 +179,7 @@ async def _handle_cookie_login(cookies: str | None, cookies_load_path: Path | No
         return Credential(musicid=int(data[0]), musickey=data[1])
 
     if cookies_load_path:
-        return Credential.from_cookies_str(await (await anyio.open_file(cookies_load_path)).read())
+        return Credential.from_cookies_str(await (await open_file(cookies_load_path)).read())
     return None
 
 
@@ -199,7 +199,7 @@ async def _finalize_credential(
 
             if cookies_save_path:
                 logging.info(f"[green]保存 Cookies 到: {cookies_save_path}")
-                await (await anyio.open_file(cookies_save_path, "w")).write(credential.as_json())
+                await (await open_file(cookies_save_path, "w")).write(credential.as_json())
 
         user = await api.get_user_detail(euin=credential.encrypt_uin, credential=credential)
         user_info = user["Info"]["BaseInfo"]
@@ -281,7 +281,7 @@ async def handle_lyric(
                 logging.warning(f"[blue][歌词][/] {song_name} - 未找到歌词")
                 return None
 
-            async with await anyio.open_file(lyric_path, "w") as f:
+            async with await open_file(lyric_path, "w") as f:
                 await f.write(lyric.get_parser().dump())
 
             if no_embed:
@@ -296,7 +296,7 @@ async def handle_lyric(
                 return
 
             logging.debug(f"[blue][歌词][/] 正在嵌入歌词: {song.info.get_full_name()}")
-            async with await anyio.open_file(lyric_path, "r") as f:
+            async with await open_file(lyric_path, "r") as f:
                 lyric_text = await f.read()
             lyric_path.unlink()
             await write_lyric(song.path, lyric_text)
