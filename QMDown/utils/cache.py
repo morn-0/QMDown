@@ -4,6 +4,7 @@ import logging
 import os
 import pickle
 import platform
+import shutil
 import time
 from collections.abc import Callable, Coroutine
 from functools import wraps
@@ -13,6 +14,8 @@ import anyio
 from anyio import Lock, Path, to_thread
 from anyio.lowlevel import RunVar
 from anyio.streams.file import FileReadStream, FileWriteStream
+
+from QMDown import __version__
 
 RetT = TypeVar("RetT")
 P = ParamSpec("P")
@@ -28,14 +31,14 @@ async def get_system_cache_dir() -> Path:
             return await Path.home() / "Library" / "Caches"
         if system == "Windows":
             return Path(os.environ["LOCALAPPDATA"]) / "Cache"
-        return await Path.home() / ".cache"  # 其他系统默认
+        return await Path.home() / ".cache"
     except KeyError:
-        return await Path.home() / ".cache"  # 环境变量缺失时的回退
+        return await Path.home() / ".cache"
 
 
 async def get_cache_path(cache_key: str) -> Path:
     """生成带哈希的文件路径"""
-    cache_root = await get_system_cache_dir() / "QMDown"
+    cache_root = await get_system_cache_dir() / "QMDown" / __version__
     hashed = hashlib.sha256(cache_key.encode()).hexdigest()
     return cache_root / f"{hashed[:2]}/{hashed[2:4]}/{hashed}.cache"
 
@@ -59,6 +62,20 @@ async def save_to_disk(cache_key: str, value: Any, expiry: float) -> None:
         logging.debug(f"Cache save failed: {e}")
 
 
+async def clean_old_caches():
+    cache_root = await get_system_cache_dir() / "QMDown"
+    if not await cache_root.exists():
+        return
+
+    async for entry in cache_root.iterdir():
+        if await entry.is_dir() and entry.name != __version__:
+            try:
+                await to_thread.run_sync(shutil.rmtree, entry)
+                logging.debug(f"Removed old cache directory: {entry}")
+            except Exception as e:
+                logging.debug(f"Failed to remove {entry}: {e}")
+
+
 async def load_from_disk(cache_key: str) -> tuple[Any, float] | None:
     cache_path = await get_cache_path(cache_key)
     try:
@@ -67,7 +84,7 @@ async def load_from_disk(cache_key: str) -> tuple[Any, float] | None:
 
         async with await FileReadStream.from_path(cache_path) as stream:
             data = await stream.receive()
-            return await to_thread.run_sync(lambda: pickle.loads(data), cancellable=True)
+        return await to_thread.run_sync(lambda: pickle.loads(data), cancellable=True)
     except (pickle.UnpicklingError, EOFError, anyio.ClosedResourceError) as e:
         await cache_path.unlink(missing_ok=True)
         logging.debug(f"Invalid cache removed: {e}")
@@ -95,7 +112,7 @@ def cached(
             sig = inspect.signature(fn)
             bound_args = sig.bind(*args, **kwargs)
             bound_args.apply_defaults()
-            cache_key = f"{fn.__module__}:{fn.__name__}:{args_to_cache_key(bound_args)}"  # 更明确的key格式
+            cache_key = f"{fn.__module__}:{fn.__name__}:{args_to_cache_key(bound_args)}"
 
             lock = run_lock.get()
             async with lock:

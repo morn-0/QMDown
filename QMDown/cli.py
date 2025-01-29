@@ -13,6 +13,7 @@ from QMDown.extractor import AlbumExtractor, SongExtractor, SonglistExtractor
 from QMDown.model import Song
 from QMDown.processor.downloader import AsyncDownloader
 from QMDown.processor.handler import handle_cover, handle_login, handle_lyric, handle_metadata, handle_song_urls
+from QMDown.utils import cache
 from QMDown.utils.async_typer import AsyncTyper
 from QMDown.utils.priority import SongFileTypePriority
 from QMDown.utils.utils import get_real_url
@@ -270,6 +271,8 @@ async def cli(
     QQ 音乐解析/下载工具
     """
     print_params(ctx)
+
+    await cache.clean_old_caches()
 
     if (cookies, login, load).count(None) < 1:
         raise typer.BadParameter("选项 '--credential' , '--login' 或 '--load' 不能共用")
