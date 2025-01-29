@@ -90,26 +90,26 @@ async def write_metadata(file: str | Path, metadata: Metadata) -> None:
     """写入元数据到音频文件"""
     file = Path(file)
     if not file.exists():
-        logging.debug(f"[blue][标签][/] 文件不存在: {file}")
+        logging.debug(f"[blue][元数据][/] 文件不存在: {file}")
         return
 
     try:
         audio = File(str(file), easy=True)
         if audio is None:
-            logging.debug(f"[blue][标签][/] 不支持的音频格式: {file}")
+            logging.debug(f"[blue][元数据][/] 不支持的音频格式: {file}")
             return
 
         for key, value in metadata.items():
             try:
                 audio[key] = value
             except (KeyError, ValueError, TypeError) as e:
-                logging.debug(f"[blue][标签][/] {key}={value} 写入失败: {e}")
+                logging.debug(f"[blue][元数据][/] {key}={value} 写入失败: {e}")
 
         audio.save()
-        logging.debug(f"[blue][标签][/] 元数据写入成功: {file.name}")
+        logging.debug(f"[blue][元数据][/] 元数据写入成功: {file.name}")
 
     except Exception as e:
-        logging.error(f"[blue][标签][/] 处理 {file.name} 失败: {e}", exc_info=True)
+        logging.error(f"[blue][元数据][/] 处理 {file.name} 失败: {e}", exc_info=True)
 
 
 async def write_lyric(file: str | Path, lyric: str) -> None:

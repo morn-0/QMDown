@@ -1,4 +1,5 @@
 import logging
+import os
 import sys
 from typing import IO, TextIO
 
@@ -6,6 +7,29 @@ import httpx
 from PIL import Image
 from PIL._typing import StrOrBytesPath
 from qrcode import QRCode
+
+
+def safe_filename(file_full_name: str) -> str:
+    """安全文件名.
+
+    Args:
+        file_full_name: 文件名.
+    """
+    file_name, file_suffix = os.path.splitext(file_full_name)
+    return f"{substitute_with_fullwidth(truncate(file_name))}{file_suffix}"
+
+
+def truncate(file_name: str, max_length: int = 50) -> str:
+    """截断文件名.
+
+    Args:
+        file_name: 文件全名.
+        max_length: 最大长度.
+    """
+    if len(file_name) > max_length:
+        keep = (max_length - 3) // 2
+        file_name = f"{file_name[:keep]}...{file_name[-keep:]}"
+    return file_name
 
 
 def substitute_with_fullwidth(

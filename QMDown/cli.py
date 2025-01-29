@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from pathlib import Path
 from typing import Annotated
@@ -306,7 +305,7 @@ async def cli(
     logging.info("[blue bold][歌曲][green bold] 下载完成")
 
     if not no_metadata:
-        await asyncio.gather(*[handle_metadata(song) for song in data])
+        await handle_metadata(data)
 
     if not no_cover:
         await handle_cover(data, output, num_workers, overwrite)

@@ -9,7 +9,7 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 
 from QMDown import console
 from QMDown.utils.progress import DownloadProgress
-from QMDown.utils.utils import substitute_with_fullwidth
+from QMDown.utils.utils import safe_filename
 
 
 class AsyncDownloader:
@@ -98,7 +98,7 @@ class AsyncDownloader:
         """
         async with self.semaphore:
             # 文件路径
-            file_path = f"{substitute_with_fullwidth(file_name)}{file_suffix}"
+            file_path = safe_filename(f"{file_name}{file_suffix}")
             # 文件全路径
             full_path = self.save_dir / file_path
 
