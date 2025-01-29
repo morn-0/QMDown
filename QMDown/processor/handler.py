@@ -155,7 +155,7 @@ async def _phone_login() -> Credential:
                 if not login.auth_url:
                     logging.warning("[blue][手机号登录][yellow]获取验证链接失败")
                     raise typer.Exit(code=1)
-                logging.info(f"请复制链接前往浏览器验证:{login.auth_url}")
+                console.print(f"[red]请复制链接前往浏览器验证:[/]\n{login.auth_url}")
                 status.stop()
                 typer.confirm("验证后请回车", prompt_suffix="", show_default=False)
                 status.start()
