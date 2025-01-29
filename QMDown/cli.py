@@ -10,7 +10,7 @@ from typer import rich_utils
 
 from QMDown import __version__, console
 from QMDown.extractor import AlbumExtractor, SongExtractor, SonglistExtractor
-from QMDown.model import Song
+from QMDown.model import Song, SongData
 from QMDown.processor.downloader import AsyncDownloader
 from QMDown.processor.handler import handle_cover, handle_login, handle_lyric, handle_metadata, handle_song_urls
 from QMDown.utils import cache
@@ -80,8 +80,7 @@ def print_params(ctx: typer.Context):
             display_value = f"[bold blue]{display_value}[/]"
         param_name = f"--{name.replace('_', '-')}"
         table.add_row(param_name, display_value)
-    console.print(table)
-    console.print("🚀 开始执行下载任务...", style="bold blue")
+    console.print(table, "🚀 开始执行下载任务...", style="bold blue")
 
 
 @app.command()
@@ -296,16 +295,15 @@ async def cli(
 
     for song in data:
         if song.url:
-            path = await song_downloader.add_task(
+            song.path = await song_downloader.add_task(
                 url=song.url.url,
                 file_name=song.info.get_full_name(),
                 file_suffix=song.url.type.e,
             )
-            song.path = path
 
     await song_downloader.execute_tasks()
 
-    logging.info("[blue][歌曲][green bold] 下载完成")
+    logging.info("[blue][歌曲][green] 下载完成")
 
     if not no_metadata:
         await handle_metadata(data)
@@ -317,10 +315,11 @@ async def cli(
         await handle_lyric(data, output, no_embed_lyric, num_workers, overwrite, trans, roma)
 
 
-async def get_song_data(urls: list[str], max_quality: int, credential: Credential | None):
+async def get_song_data(urls: list[str], max_quality: int, credential: Credential | None) -> list[SongData]:
     extractors = [SongExtractor(), SonglistExtractor(), AlbumExtractor()]
     song_data: list[Song] = []
-    with console.status("解析链接中...") as status:
+
+    with console.status("解析链接中..."):
         for url in urls:
             # 获取真实链接(如果适用)
             original_url = url
@@ -345,17 +344,17 @@ async def get_song_data(urls: list[str], max_quality: int, credential: Credentia
                     break
             else:
                 logging.info(f"Not Supported: {url}")
-        # 歌曲去重
-        mids = list({item.mid: item for item in song_data}.values())
+    # 歌曲去重
+    song_data = await deduplicate_songs(song_data)
 
-        if len(mids) == 0:
+    with console.status(f"[green]获取歌曲链接中[/] 共{len(song_data)}首..."):
+        if len(song_data) == 0:
             raise typer.Exit()
 
         # 获取歌曲链接
-        status.update(f"[green]获取歌曲链接中[/] 共{len(mids)}首...")
-        data = await handle_song_urls(mids, max_quality, credential)
+        data = await handle_song_urls(song_data, max_quality, credential)
 
-        logging.info(f"[red]获取歌曲链接成功: {len(data)}/{len(mids)}")
+        logging.info(f"[red]获取歌曲链接成功: {len(data)}/{len(song_data)}")
 
         s_mids = [song.info.mid for song in data]
         f_data = [song for song in song_data if song.mid not in s_mids]
@@ -363,6 +362,49 @@ async def get_song_data(urls: list[str], max_quality: int, credential: Credentia
             logging.info(f"[red]获取歌曲链接失败: {[song.get_full_name() for song in f_data]}")
 
     return data
+
+
+async def deduplicate_songs(data: list[Song]) -> list[Song]:
+    data = list({song.mid: song for song in data}.values())
+    names: dict[str, list[Song]] = {}
+
+    for song in data:
+        full_name = song.get_full_name()
+        names.setdefault(full_name, []).append(song)
+
+    for name, songs in names.items():
+        if len(songs) > 1:
+            table = Table(box=None)
+            table.add_column("序号", style="bold blue")
+            table.add_column("标题")
+            table.add_column("歌手")
+            table.add_column("专辑", style="bold red")
+
+            for idx, song in enumerate(songs, 1):
+                table.add_row(str(idx), song.title, song.singer_to_str(), song.album.title)
+
+            console.print(f"\n以下是不同版本的[cyan]{name}\n", table, "")
+
+            while True:
+                indexs = typer.prompt(
+                    "请输入要下载的序号(多个序号用空格分隔,回车全部下载)",
+                    type=list[int],
+                    value_proc=lambda x: [int(i) - 1 for i in x.split() if i.isdigit() and 1 <= int(i) <= len(songs)],
+                    default=" ".join(map(str, range(1, len(songs) + 1))),
+                )
+                if indexs:
+                    break
+                console.print("[red]请输入正确的序号!")
+
+            selected_songs = [songs[i] for i in indexs]
+
+            if len(songs) > 1:
+                for song in selected_songs:
+                    song.title = f"{song.name} [{song.album.name}]"
+
+            names[name] = selected_songs
+
+    return [song for group in names.values() for song in group]
 
 
 if __name__ == "__main__":

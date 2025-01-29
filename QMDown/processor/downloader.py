@@ -4,12 +4,23 @@ from pathlib import Path
 
 import anyio
 import httpx
+from pydantic import BaseModel
 from rich.progress import TaskID
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from QMDown import console
 from QMDown.utils.progress import DownloadProgress
 from QMDown.utils.utils import safe_filename
+
+
+class DownloadTask(BaseModel):
+    """下载任务"""
+
+    id: TaskID
+    url: str
+    file_name: str
+    file_suffix: str
+    full_path: Path
 
 
 class AsyncDownloader:
@@ -35,7 +46,7 @@ class AsyncDownloader:
         self.max_concurrent = num_workers
         self.timeout = timeout
         self.semaphore = asyncio.Semaphore(num_workers)
-        self.download_tasks = []
+        self.download_tasks: list[DownloadTask] = []
         self.progress = DownloadProgress()
         self.no_progress = no_progress
         self.overwrite = overwrite
@@ -67,7 +78,7 @@ class AsyncDownloader:
             async with httpx.AsyncClient() as client:
                 content_length = await self._fetch_file_size(client, url)
                 if content_length == 0:
-                    logging.warning(f"[yellow]获取 [blue]{full_path.name} [yellow]大小失败")
+                    logging.warning(f"[blue][下载][yellow]获取文件大小失败: [cyan]{full_path.name}")
 
                 async with client.stream("GET", url, timeout=self.timeout) as response:
                     response.raise_for_status()
@@ -83,9 +94,9 @@ class AsyncDownloader:
                                 visible=True,
                             )
                     await self.progress.update(task_id, visible=False)
-                    logging.info(f"[blue][完成][/] {full_path.name}")
+                    logging.info(f"[blue][下载][/] [green]完成[/] [cyan]{full_path.name}")
 
-    async def add_task(self, url: str, file_name: str, file_suffix: str) -> Path:
+    async def add_task(self, url: str, file_name: str, file_suffix: str) -> Path | None:
         """添加下载任务.
 
         Args:
@@ -103,25 +114,41 @@ class AsyncDownloader:
             full_path = self.save_dir / file_path
 
             if not self.overwrite and full_path.exists():
-                logging.info(f"[blue][跳过][/] {file_name}")
+                logging.info(f"[blue][下载][/] [red]跳过[/] [cyan]{file_path}")
             else:
+                # 检查是否有相同路径的任务正在进行
+                if _ := next((task for task in self.download_tasks if task.full_path == full_path), None):
+                    logging.info(f"[blue][下载][/] [red]发现相同路径任务:[/] [cyan]{file_path}")
+                    return None
+
                 task_id = await self.progress.add_task(
                     description=f"[ {file_suffix.replace('.', '')} ]:",
                     filename=file_name,
                     visible=False,
                 )
-                download_task = asyncio.create_task(self.download_file(task_id, url, full_path))
-                self.download_tasks.append(download_task)
+                self.download_tasks.append(
+                    DownloadTask(
+                        id=task_id,
+                        url=url,
+                        file_name=file_name,
+                        file_suffix=file_suffix,
+                        full_path=full_path,
+                    )
+                )
             return full_path
+
+    async def start(self):
+        await asyncio.gather(*[self.download_file(task.id, task.url, task.full_path) for task in self.download_tasks])
 
     async def execute_tasks(self):
         """执行所有下载任务"""
         if len(self.download_tasks) == 0:
             return
+
         if self.no_progress:
             with console.status("下载中..."):
-                await asyncio.gather(*self.download_tasks)
+                await self.start()
         else:
             with self.progress:
-                await asyncio.gather(*self.download_tasks)
+                await self.start()
         self.download_tasks.clear()

@@ -72,6 +72,7 @@ class Song(BaseModel):
     mid: str
     name: str
     title: str
+    subtitle: str
     singer: list[Singer]
     album: Album
     file: FileInfo | None = None
@@ -86,10 +87,10 @@ class Song(BaseModel):
     def singer_to_str(self, sep: str = ",") -> str:
         return sep.join([s.name for s in self.singer])
 
-    def get_full_name(self, format: str = "{name} - {singer}", sep: str = ",") -> str:
-        if "{name}" not in format or "{singer}" not in format:
-            raise ValueError("format 必须包含 {name} 和 {singer}")
-        return format.format(name=self.name, singer=self.singer_to_str(sep=sep))
+    def get_full_name(self, format: str = "{title} - {singer}", sep: str = ",") -> str:
+        if "{title}" not in format or "{singer}" not in format:
+            raise ValueError("format 必须包含 {title} 和 {singer}")
+        return format.format(title=self.title, singer=self.singer_to_str(sep=sep))
 
 
 class SongUrl(BaseModel):

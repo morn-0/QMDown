@@ -18,84 +18,6 @@ from QMDown.utils.tag import Metadata, add_cover_to_audio, write_lyric, write_me
 from QMDown.utils.utils import safe_filename, show_qrcode
 
 
-async def handle_metadata(data: list[SongData]):
-    logging.info("[blue][元数据][/] 开始添加元数据")
-
-    async def _add(data: SongData):
-        if not data.path:
-            return
-
-        song_task = asyncio.create_task(api.get_song_detail(data.info.mid))
-        album_task = asyncio.create_task(api.get_album_detail(mid=data.info.album.mid)) if data.info.album.mid else None
-
-        # 处理歌曲信息
-        song = await song_task
-        track_info = song.track_info
-
-        metadata: Metadata = {
-            "title": [track_info.title],
-            "artist": [s.name for s in track_info.singer],
-        }
-        if song.company:
-            metadata["copyright"] = song.company
-        if song.genre:
-            metadata["genre"] = song.genre
-
-        if track_info.index_album:
-            metadata["tracknumber"] = [str(track_info.index_album)]
-        if track_info.index_cd:
-            metadata["discnumber"] = [str(track_info.index_cd)]
-
-        # 处理专辑信息
-        if album_task:
-            album = await album_task
-            metadata.update(
-                {
-                    "album": [album.info.name],
-                    "albumartist": [s.name for s in album.singer],
-                }
-            )
-
-        # 处理发行时间
-        if song.time_public and song.time_public[0]:
-            metadata["date"] = [str(song.time_public[0])]
-        logging.debug(f"[blue][元数据][/] {data.path}: {metadata}")
-        await write_metadata(data.path, metadata)
-
-    with console.status("[bold]添加元数据中...[/]"):
-        await asyncio.gather(*[_add(song) for song in data])
-    logging.info("[blue][元数据][green] 元数据添加完成")
-
-
-async def handle_cover(data: list[SongData], save_dir: Path | str, num_workers: int, overwrite: bool):
-    # 下载封面
-    logging.info("[blue][封面][/] 开始下载专辑封面")
-
-    cover_downloader = AsyncDownloader(
-        save_dir=save_dir,
-        num_workers=num_workers,
-        overwrite=overwrite,
-    )
-
-    for song in data:
-        if song.path and song.path.exists():
-            if mid := song.info.album.mid or song.info.album.pmid:
-                song.cover = await cover_downloader.add_task(
-                    url=f"https://y.gtimg.cn/music/photo_new/T002R500x500M000{mid}.jpg",
-                    file_name=song.info.get_full_name(),
-                    file_suffix=".jpg",
-                )
-
-    await cover_downloader.execute_tasks()
-
-    logging.info("[blue][封面][green] 专辑封面下载完成")
-
-    logging.info("[blue][封面][/] 开始嵌入专辑封面")
-    with console.status("嵌入封面中..."):
-        await asyncio.gather(*[add_cover_to_audio(song.path, song.cover) for song in data if song.path and song.cover])
-    logging.info("[blue][封面][green] 专辑封面嵌入完成")
-
-
 async def handle_login(
     cookies: str | None = None,
     login_type: str | None = None,
@@ -246,6 +168,83 @@ async def handle_song_urls(
     return data
 
 
+async def handle_metadata(data: list[SongData]):
+    logging.info("[blue][元数据][/] 开始添加元数据")
+
+    async def _add(data: SongData):
+        if not data.path:
+            return
+
+        song_task = asyncio.create_task(api.get_song_detail(data.info.mid))
+        album_task = asyncio.create_task(api.get_album_detail(mid=data.info.album.mid)) if data.info.album.mid else None
+
+        song = await song_task
+        track_info = song.track_info
+
+        metadata: Metadata = {
+            "title": [track_info.title],
+            "artist": [s.name for s in track_info.singer],
+        }
+        if song.company:
+            metadata["copyright"] = song.company
+        if song.genre:
+            metadata["genre"] = song.genre
+
+        if track_info.index_album:
+            metadata["tracknumber"] = [str(track_info.index_album)]
+        if track_info.index_cd:
+            metadata["discnumber"] = [str(track_info.index_cd)]
+
+        # 处理专辑信息
+        if album_task:
+            album = await album_task
+            metadata.update(
+                {
+                    "album": [album.info.name],
+                    "albumartist": [s.name for s in album.singer],
+                }
+            )
+
+        # 处理发行时间
+        if song.time_public and song.time_public[0]:
+            metadata["date"] = [str(song.time_public[0])]
+        logging.debug(f"[blue][元数据][/] {data.path}: {metadata}")
+        await write_metadata(data.path, metadata)
+
+    with console.status("添加元数据中...[/]"):
+        await asyncio.gather(*[_add(song) for song in data])
+    logging.info("[blue][元数据][green] 元数据添加完成")
+
+
+async def handle_cover(data: list[SongData], save_dir: Path | str, num_workers: int, overwrite: bool):
+    # 下载封面
+    logging.info("[blue][封面][/] 开始下载专辑封面")
+
+    cover_downloader = AsyncDownloader(
+        save_dir=save_dir,
+        num_workers=num_workers,
+        overwrite=overwrite,
+    )
+
+    for song in data:
+        if song.path and song.path.exists():
+            if mid := song.info.album.mid or song.info.album.pmid:
+                song.cover = await cover_downloader.add_task(
+                    url=f"https://y.gtimg.cn/music/photo_new/T002R500x500M000{mid}.jpg",
+                    file_name=song.info.get_full_name(),
+                    file_suffix=".jpg",
+                )
+
+    await cover_downloader.execute_tasks()
+
+    logging.info("[blue][封面][green] 专辑封面下载完成")
+
+    logging.info("[blue][封面][/] 开始嵌入专辑封面")
+    with console.status("嵌入封面中..."):
+        await asyncio.gather(*[add_cover_to_audio(song.path, song.cover) for song in data if song.path and song.cover])
+    logging.info("[blue][封面][green] 专辑封面嵌入完成")
+
+
 async def handle_lyric(
     data: list[SongData],
     save_dir: str | Path = ".",
@@ -272,27 +271,27 @@ async def handle_lyric(
                 return None
 
             song_name = song.info.get_full_name()
-            lyric_path = save_dir / safe_filename(f"{song_name}.lrc")
+            lyric_path = save_dir / safe_filename(f"{song.info.get_full_name()}.lrc")
 
             if not overwrite and lyric_path.exists():
-                logging.info(f"[blue][跳过][/] {lyric_path.name} - 歌词已存在")
+                logging.info(f"[blue][歌词][/] [red]跳过 [cyan]{lyric_path.name}[/] [/]- 歌词已存在")
                 return None
 
             try:
                 lyric = await api.get_lyric(mid=song.info.mid, qrc=qrc, trans=trans, roma=roma)
             except Exception as e:
-                logging.error(f"[blue][歌词][/] {song_name} - 下载歌词出错: {e}", exc_info=True)
+                logging.error(f"[blue][歌词][/] [cyan]{song_name}[/] - 下载歌词出错: {e}", exc_info=True)
                 return None
 
             if not lyric.lyric:
-                logging.warning(f"[blue][歌词][/] {song_name} - 未找到歌词")
+                logging.warning(f"[blue][歌词][/] [cyan]{song_name}[/] - 未找到歌词")
                 return None
 
             async with await open_file(lyric_path, "w") as f:
                 await f.write(lyric.get_parser().dump())
 
             if no_embed:
-                logging.info(f"[blue][完成][/] 歌词已保存: {lyric_path.name}")
+                logging.info(f"[blue][歌词][/] 已保存: [cyan]{lyric_path.name}")
 
             return lyric_path if not no_embed else None
 
@@ -302,18 +301,16 @@ async def handle_lyric(
             if not song.path or not song.path.exists() or not lyric_path.exists():
                 return
 
-            logging.debug(f"[blue][歌词][/] 正在嵌入歌词: {song.info.get_full_name()}")
+            logging.debug(f"[blue][歌词][/] 正在嵌入歌词: [cyan]{song.info.get_full_name()}")
             async with await open_file(lyric_path, "r") as f:
-                lyric_text = await f.read()
-            lyric_path.unlink()
-            await write_lyric(song.path, lyric_text)
-            logging.debug(f"[blue][歌词][/] 歌词嵌入成功: {song.info.get_full_name()}")
+                await write_lyric(song.path, await f.read())
+            logging.debug(f"[blue][歌词][/] 歌词嵌入成功: [cyan]{song.info.get_full_name()}")
+            lyric_path.unlink(missing_ok=True)
 
     logging.info("[blue][歌词][/] 开始下载歌词")
 
     with console.status("[blue]下载歌词中...[/]"):
-        lyric_tasks = [download_lyric(song) for song in data]
-        lyric_results = await asyncio.gather(*lyric_tasks)
+        lyric_results = await asyncio.gather(*[download_lyric(song) for song in data])
 
     logging.info("[blue][歌词][/] [green]歌词下载完成")
 
