@@ -224,6 +224,7 @@ async def handle_cover(data: list[SongData], save_dir: Path | str, num_workers: 
         save_dir=save_dir,
         num_workers=num_workers,
         overwrite=overwrite,
+        no_progress=True,
     )
 
     for song in data:
