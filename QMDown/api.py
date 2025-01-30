@@ -1,6 +1,6 @@
-from qqmusic_api import Credential, album, lyric, song, songlist, top, user
+from qqmusic_api import Credential, album, lyric, singer, song, songlist, top, user
 
-from QMDown.model import AlbumDetial, Lyric, Song, SongDetail, SonglistDetail, SongUrl, ToplistDetail
+from QMDown.model import AlbumDetial, Lyric, SingerDetail, Song, SongDetail, SonglistDetail, SongUrl, ToplistDetail
 from QMDown.utils.cache import cached
 
 
@@ -67,8 +67,22 @@ async def get_toplist_detail(id: int) -> ToplistDetail:
     detail = await model.get_detail()
     return ToplistDetail.model_validate(
         {
+            "id": detail["topId"],
             "title": detail["title"],
             "songnum": detail["totalNum"],
             "songs": await model.get_song(),
+        }
+    )
+
+
+@cached(lambda args: args.arguments["mid"])
+async def get_singer_detail(mid: str):
+    model = singer.Singer(mid=mid)
+    info = (await model.get_info())["Info"]["Singer"]
+    return SingerDetail.model_validate(
+        {
+            "mid": info["SingerMid"],
+            "name": info["Name"],
+            "songs": await model.get_song(num=10000),
         }
     )

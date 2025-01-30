@@ -40,7 +40,7 @@ async def get_cache_path(cache_key: str) -> Path:
     """生成带哈希的文件路径"""
     cache_root = await get_system_cache_dir() / "QMDown" / __version__
     hashed = hashlib.sha256(cache_key.encode()).hexdigest()
-    return cache_root / f"{hashed[:2]}/{hashed[2:4]}/{hashed}.cache"
+    return cache_root / f"{hashed}.cache"
 
 
 async def save_to_disk(cache_key: str, value: Any, expiry: float) -> None:

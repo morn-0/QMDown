@@ -165,6 +165,13 @@ class SongData(BaseModel):
 
 
 class ToplistDetail(BaseModel):
+    id: int
     title: str
     songnum: int
+    songs: list[Song]
+
+
+class SingerDetail(BaseModel):
+    mid: str
+    name: str
     songs: list[Song]

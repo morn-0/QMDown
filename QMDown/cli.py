@@ -9,7 +9,7 @@ from rich.table import Table
 from typer import rich_utils
 
 from QMDown import __version__, console
-from QMDown.extractor import AlbumExtractor, SongExtractor, SonglistExtractor, ToplistExtractor
+from QMDown.extractor import AlbumExtractor, SingerExtractor, SongExtractor, SonglistExtractor, ToplistExtractor
 from QMDown.model import Song, SongData
 from QMDown.processor.downloader import AsyncDownloader
 from QMDown.processor.handler import handle_cover, handle_login, handle_lyric, handle_metadata, handle_song_urls
@@ -324,7 +324,7 @@ async def cli(
 
 
 async def get_song_data(urls: list[str], max_quality: int, credential: Credential | None) -> list[SongData]:
-    extractors = [SongExtractor(), SonglistExtractor(), AlbumExtractor(), ToplistExtractor()]
+    extractors = [SongExtractor(), SonglistExtractor(), AlbumExtractor(), ToplistExtractor(), SingerExtractor()]
     song_data: list[Song] = []
 
     with console.status("解析链接中..."):
