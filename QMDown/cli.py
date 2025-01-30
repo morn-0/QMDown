@@ -1,4 +1,5 @@
 import logging
+import re
 from pathlib import Path
 from typing import Annotated
 
@@ -23,6 +24,16 @@ app = AsyncTyper(
     add_completion=False,
     invoke_without_command=True,
 )
+
+
+def search_url(values: list[str]) -> list[str]:
+    pattern = re.compile(r"https?:\/\/[^\s]+")
+    url = []
+    for value in values:
+        result = pattern.findall(value)
+        if result:
+            url.extend(result)
+    return url
 
 
 def handle_version(value: bool):
@@ -89,8 +100,9 @@ async def cli(
     urls: Annotated[
         list[str],
         typer.Argument(
-            help="QQ 音乐链接(支持多个链接)",
+            help="QQ 音乐链接 \n支持多个链接,可带有其他文本,会自动提取",
             show_default=False,
+            callback=search_url,
         ),
     ],
     output: Annotated[
