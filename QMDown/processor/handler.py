@@ -216,27 +216,20 @@ async def handle_metadata(data: list[SongData]):
     logging.info("[blue][元数据][green] 元数据添加完成")
 
 
-async def handle_cover(data: list[SongData], save_dir: Path | str, num_workers: int, overwrite: bool):
+async def handle_cover(data: list[SongData], downloader: AsyncDownloader):
     # 下载封面
     logging.info("[blue][封面][/] 开始下载专辑封面")
-
-    cover_downloader = AsyncDownloader(
-        save_dir=save_dir,
-        num_workers=num_workers,
-        overwrite=overwrite,
-        no_progress=True,
-    )
 
     for song in data:
         if song.path and song.path.exists():
             if mid := song.info.album.mid or song.info.album.pmid:
-                song.cover = await cover_downloader.add_task(
+                song.cover = await downloader.add_task(
                     url=f"https://y.gtimg.cn/music/photo_new/T002R500x500M000{mid}.jpg",
                     file_name=song.info.get_full_name(),
                     file_suffix=".jpg",
                 )
 
-    await cover_downloader.execute_tasks()
+    await downloader.execute_tasks()
 
     logging.info("[blue][封面][green] 专辑封面下载完成")
 

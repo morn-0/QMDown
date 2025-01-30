@@ -6,7 +6,7 @@ import anyio
 import httpx
 from pydantic import BaseModel
 from rich.progress import TaskID
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+from tenacity import AsyncRetrying, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from QMDown import console
 from QMDown.utils.progress import DownloadProgress
@@ -31,7 +31,8 @@ class AsyncDownloader:
         save_dir: str | Path = ".",
         num_workers: int = 3,
         no_progress: bool = False,
-        timeout: int = 10,
+        retries: int = 3,
+        timeout: int = 15,
         overwrite: bool = False,
     ):
         """
@@ -39,6 +40,7 @@ class AsyncDownloader:
             save_dir: 文件保存目录.
             max_concurrent: 最大并发下载任务数.
             timeout: 每个请求的超时时间(秒).
+            retries: 重试次数.
             no_progress: 是否显示进度.
             overwrite: 是否强制覆盖已下载文件.
         """
@@ -49,13 +51,9 @@ class AsyncDownloader:
         self.download_tasks: list[DownloadTask] = []
         self.progress = DownloadProgress()
         self.no_progress = no_progress
+        self.retries = retries
         self.overwrite = overwrite
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((httpx.RequestError, httpx.ReadTimeout, httpx.ConnectTimeout)),
-    )
     async def _fetch_file_size(self, client: httpx.AsyncClient, url: str) -> int:
         try:
             response = await client.head(url)
@@ -66,35 +64,42 @@ class AsyncDownloader:
         except Exception:
             return 0
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((httpx.RequestError, httpx.ReadTimeout, httpx.ConnectTimeout)),
-    )
-    async def download_file(self, task_id: TaskID, url: str, full_path: Path):
+    async def download_file(self, client: httpx.AsyncClient, task_id: TaskID, url: str, full_path: Path):
         async with self.semaphore:
-            self.save_dir.mkdir(parents=True, exist_ok=True)
+            await self.progress.update(task_id, visible=True)
+            async for attempt in AsyncRetrying(
+                stop=stop_after_attempt(self.retries),
+                wait=wait_exponential(multiplier=1, min=2, max=10),
+                retry=retry_if_exception_type((httpx.RequestError, httpx.ReadTimeout, httpx.ConnectTimeout)),
+            ):
+                with attempt:
+                    self.save_dir.mkdir(parents=True, exist_ok=True)
 
-            async with httpx.AsyncClient() as client:
-                content_length = await self._fetch_file_size(client, url)
-                if content_length == 0:
-                    logging.warning(f"[blue][下载][yellow]获取文件大小失败: [cyan]{full_path.name}")
+                    content_length = await self._fetch_file_size(client, url)
+                    if content_length == 0:
+                        logging.warning(f"[blue][下载][yellow]获取文件大小失败: [cyan]{full_path.name}")
 
-                async with client.stream("GET", url, timeout=self.timeout) as response:
-                    response.raise_for_status()
-                    async with await anyio.open_file(full_path, "wb") as f:
-                        chunk_size = 64 * 1024
-                        async for chunk in response.aiter_bytes(chunk_size):
-                            chunk_size = min(chunk_size * 2, 1024 * 1024)
-                            await f.write(chunk)
-                            await self.progress.update(
-                                task_id,
-                                advance=len(chunk),
-                                total=content_length,
-                                visible=True,
-                            )
-                    await self.progress.update(task_id, visible=False)
-                    logging.info(f"[blue][下载][/] [green]完成[/] [cyan]{full_path.name}")
+                    await self.progress.update(
+                        task_id,
+                        description=f"[blue]\[{full_path.suffix.replace('.', '')}]",
+                        completed=0,
+                        total=content_length,
+                    )
+
+                    async with client.stream("GET", url, timeout=self.timeout) as response:
+                        response.raise_for_status()
+                        async with await anyio.open_file(full_path, "wb") as f:
+                            chunk_size = 64 * 1024
+                            async for chunk in response.aiter_bytes(chunk_size):
+                                chunk_size = min(chunk_size * 2, 1024 * 1024)
+                                await f.write(chunk)
+                                await self.progress.update(
+                                    task_id,
+                                    advance=len(chunk),
+                                    visible=True,
+                                )
+                        await self.progress.update(task_id, visible=False)
+                        logging.info(f"[blue][下载][/] [green]完成[/] [cyan]{full_path.name}")
 
     async def add_task(self, url: str, file_name: str, file_suffix: str) -> Path | None:
         """添加下载任务.
@@ -122,10 +127,11 @@ class AsyncDownloader:
                     return None
 
                 task_id = await self.progress.add_task(
-                    description=f"[ {file_suffix.replace('.', '')} ]:",
+                    description="[blue][等待]:[/]",
                     filename=file_name,
                     visible=False,
                 )
+
                 self.download_tasks.append(
                     DownloadTask(
                         id=task_id,
@@ -138,7 +144,10 @@ class AsyncDownloader:
             return full_path
 
     async def start(self):
-        await asyncio.gather(*[self.download_file(task.id, task.url, task.full_path) for task in self.download_tasks])
+        async with httpx.AsyncClient() as client:
+            await asyncio.gather(
+                *[self.download_file(client, task.id, task.url, task.full_path) for task in self.download_tasks]
+            )
 
     async def execute_tasks(self):
         """执行所有下载任务"""

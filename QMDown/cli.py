@@ -26,14 +26,14 @@ app = AsyncTyper(
 )
 
 
-def search_url(values: list[str]) -> list[str]:
+def search_url(values: list[str]) -> tuple:
     pattern = re.compile(r"https?:\/\/[^\s]+")
-    url = []
+    url = set()
     for value in values:
         result = pattern.findall(value)
         if result:
-            url.extend(result)
-    return url
+            url.update(result)
+    return tuple(url)
 
 
 def handle_version(value: bool):
@@ -66,9 +66,9 @@ def parse_cookies(value: str | None) -> Credential | None:
 
 
 def print_params(ctx: typer.Context):
-    console.print("🌈 当前运行参数:", style="bold blue")
+    console.print("🌈 当前运行参数:", style="blue")
     table = Table(show_header=False, box=None, padding=(0, 2))
-    table.add_column("参数项", style="bold cyan", width=20)
+    table.add_column("参数项", style="cyan", width=20)
     table.add_column("配置值", style="yellow", overflow="fold")
     sensitive_params = {"cookies"}
     for name, value in ctx.params.items():
@@ -147,6 +147,26 @@ async def cli(
             rich_help_panel="[blue bold]Download[/] [green bold]下载",
         ),
     ] = False,
+    max_retries: Annotated[
+        int,
+        typer.Option(
+            "-r",
+            "--max-retries",
+            help="下载失败重试次数",
+            rich_help_panel="[blue bold]Download[/] [green bold]下载",
+            min=0,
+        ),
+    ] = 3,
+    timeout: Annotated[
+        int,
+        typer.Option(
+            "-t",
+            "--timeout",
+            help="下载超时时间",
+            rich_help_panel="[blue bold]Download[/] [green bold]下载",
+            min=0,
+        ),
+    ] = 15,
     lyric: Annotated[
         bool,
         typer.Option(
@@ -306,22 +326,24 @@ async def cli(
 
     logging.info(f"[blue][歌曲][/] 开始下载 总共 {len(data)} 首")
 
-    song_downloader = AsyncDownloader(
+    downloader = AsyncDownloader(
         save_dir=output,
         num_workers=num_workers,
         no_progress=no_progress,
         overwrite=overwrite,
+        timeout=timeout,
+        retries=max_retries,
     )
 
     for song in data:
         if song.url:
-            song.path = await song_downloader.add_task(
+            song.path = await downloader.add_task(
                 url=song.url.url,
                 file_name=song.info.get_full_name(),
                 file_suffix=song.url.type.e,
             )
 
-    await song_downloader.execute_tasks()
+    await downloader.execute_tasks()
 
     logging.info("[blue][歌曲][green] 下载完成")
 
@@ -329,7 +351,8 @@ async def cli(
         await handle_metadata(data)
 
     if not no_cover:
-        await handle_cover(data, output, num_workers, overwrite)
+        downloader.no_progress = True
+        await handle_cover(data, downloader)
 
     if lyric:
         await handle_lyric(data, output, no_embed_lyric, no_del_lyric, num_workers, overwrite, trans, roma)
