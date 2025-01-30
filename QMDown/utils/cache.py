@@ -1,3 +1,4 @@
+import gzip
 import hashlib
 import inspect
 import logging
@@ -49,20 +50,34 @@ async def save_to_disk(cache_key: str, value: Any, expiry: float) -> None:
     try:
         # 异步创建目录结构
         await cache_path.parent.mkdir(parents=True, exist_ok=True)
+        serialized = await to_thread.run_sync(lambda: pickle.dumps((value, expiry)), cancellable=True)
+        compressed = await to_thread.run_sync(lambda: gzip.compress(serialized, 6), cancellable=True)
 
         async with await FileWriteStream.from_path(temp_path) as stream:
-            serialized = await to_thread.run_sync(lambda: pickle.dumps((value, expiry)), cancellable=True)
-            await stream.send(serialized)
-
-        # 原子替换文件
+            await stream.send(compressed)
         await temp_path.rename(cache_path)
-
     except Exception as e:
         await temp_path.unlink(missing_ok=True)
         logging.debug(f"Cache save failed: {e}")
 
 
-async def clean_old_caches():
+async def load_from_disk(cache_key: str) -> tuple[Any, float] | None:
+    cache_path = await get_cache_path(cache_key)
+    try:
+        if not await cache_path.exists():
+            return None
+
+        async with await FileReadStream.from_path(cache_path) as stream:
+            data = await stream.receive()
+        compressed = await to_thread.run_sync(lambda: gzip.decompress(data), cancellable=True)
+        return await to_thread.run_sync(lambda: pickle.loads(compressed), cancellable=True)
+    except (pickle.UnpicklingError, EOFError, anyio.ClosedResourceError) as e:
+        await cache_path.unlink(missing_ok=True)
+        logging.debug(f"Invalid cache removed: {e}")
+        return None
+
+
+async def clean_caches():
     cache_root = await get_system_cache_dir() / "QMDown"
     if not await cache_root.exists():
         return
@@ -74,30 +89,6 @@ async def clean_old_caches():
                 logging.debug(f"Removed old cache directory: {entry}")
             except Exception as e:
                 logging.debug(f"Failed to remove {entry}: {e}")
-
-
-async def load_from_disk(cache_key: str) -> tuple[Any, float] | None:
-    cache_path = await get_cache_path(cache_key)
-    try:
-        if not await cache_path.exists():
-            return None
-
-        async with await FileReadStream.from_path(cache_path) as stream:
-            data = await stream.receive()
-        return await to_thread.run_sync(lambda: pickle.loads(data), cancellable=True)
-    except (pickle.UnpicklingError, EOFError, anyio.ClosedResourceError) as e:
-        await cache_path.unlink(missing_ok=True)
-        logging.debug(f"Invalid cache removed: {e}")
-        return None
-
-
-async def delete_disk_cache(cache_key: str) -> None:
-    cache_path = await get_cache_path(cache_key)
-    await cache_path.unlink(missing_ok=True)
-    # 自动清理空目录
-    for parent in [cache_path.parent, cache_path.parent.parent]:
-        if await parent.is_dir():
-            await parent.rmdir()
 
 
 def cached(
@@ -114,8 +105,7 @@ def cached(
             bound_args.apply_defaults()
             cache_key = f"{fn.__module__}:{fn.__name__}:{args_to_cache_key(bound_args)}"
 
-            lock = run_lock.get()
-            async with lock:
+            async with run_lock.get():
                 current_time = time.time()
 
                 # 内存缓存检查

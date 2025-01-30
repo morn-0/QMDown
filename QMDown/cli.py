@@ -311,7 +311,7 @@ async def cli(
     """
     print_params(ctx)
 
-    await cache.clean_old_caches()
+    await cache.clean_caches()
 
     if (cookies, login, load).count(None) < 1:
         raise typer.BadParameter("选项 '--credential' , '--login' 或 '--load' 不能共用")
