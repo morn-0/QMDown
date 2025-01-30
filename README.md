@@ -21,9 +21,6 @@
 
 **欢迎向本项目提出[Issues](https://github.com/luren-dc/QMDown/issues),贡献[Pull Requests](https://github.com/luren-dc/QMDown/pulls)**
 
-> [!WARNING]
-> **请勿在公开场合宣传本软件**
-
 > [!IMPORTANT]
 > 本仓库的所有内容仅供学习和参考之用，禁止用于商业用途
 >
@@ -62,7 +59,7 @@ uv tool install git+https://github.com/luren-dc/QMDown.git@main
     - [x] WX
   - [x] 手机号
 - 支持类型
-  - [ ] 歌手
+  - [x] 歌手
   - [x] 专辑
   - [x] 歌单
   - [x] 歌曲
@@ -81,12 +78,14 @@ uv tool install git+https://github.com/luren-dc/QMDown.git@main
 
 ### 已支持下载类型
 
-| 类型 | 示例链接                                                                                                                       |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------ |
-| base | `https://c6.y.qq.com/base/fcgi-bin/u?__=jXIuFz8tBzpA`                                                                          |
-| 歌曲 | `https://y.qq.com/n/ryqq/songDetail/004Ti8rT003TaZ` <br/> `https://i.y.qq.com/v8/playsong.html?songmid=004UMhHW33BWSk`         |
-| 歌单 | `https://y.qq.com/n/ryqq/playlist/1374105607` <br/> `https://i.y.qq.com/n2/m/share/details/taoge.html?id=7524170477`           |
-| 专辑 | `https://y.qq.com/n/ryqq/albumDetail/003dYC933CfoSi` <br/> `https://i.y.qq.com/n2/m/share/details/album.html?albumId=50967596` |
+| 类型   | 示例链接                                                                                                                             |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| base   | `https://c6.y.qq.com/base/fcgi-bin/u?__=jXIuFz8tBzpA`                                                                                |
+| 歌曲   | `https://y.qq.com/n/ryqq/songDetail/004Ti8rT003TaZ` <br/> `https://i.y.qq.com/v8/playsong.html?songmid=004UMhHW33BWSk`               |
+| 歌单   | `https://y.qq.com/n/ryqq/playlist/1374105607` <br/> `https://i.y.qq.com/n2/m/share/details/taoge.html?id=7524170477`                 |
+| 专辑   | `https://y.qq.com/n/ryqq/albumDetail/003dYC933CfoSi` <br/> `https://i.y.qq.com/n2/m/share/details/album.html?albumId=50967596`       |
+| 排行榜 | `https://y.qq.com/n/ryqq/toplist/3` <br/> `https://i.y.qq.com/n2/m/share/details/toplist.html?id=26`                                 |
+| 歌手   | `https://y.qq.com/n/ryqq/singer/001BLpXF2DyJe2` <br/> `https://i.y.qq.com/n2/m/share/profile_v2/index.html?singermid=0025NhlN2yWrP4` |
 
 ## 基本使用
 
@@ -116,6 +115,7 @@ Usage: QMDown [OPTIONS] URLS...
 │ --trans                   下载双语翻译歌词(需配合`--lyric`使用)                                                                                   │
 │ --roma                    下载罗马音歌词(需配合`--lyric`使用)                                                                                     │
 │ --no-embed-lyric          禁用歌词文件嵌入                                                                                                        │
+│ --no-del-lyric            禁用嵌入歌词文件后删除                                                                                                  │
 ╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ╭─ Metadata 元数据 ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
 │ --no-metadata          禁用元数据添加                                                                                                             │
