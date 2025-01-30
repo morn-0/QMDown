@@ -9,32 +9,30 @@ from PIL._typing import StrOrBytesPath
 from qrcode import QRCode
 
 
-def safe_filename(file_full_name: str) -> str:
-    """安全文件名.
-
-    Args:
-        file_full_name: 文件名.
-    """
-    file_name, file_suffix = os.path.splitext(file_full_name)
-    return f"{substitute_with_fullwidth(truncate(file_name))}{file_suffix}"
-
-
-def truncate(file_name: str, max_length: int = 50) -> str:
-    """截断文件名.
+def truncate(file_name: str, file_suffix: str, max_length: int = 255) -> str:
+    """截断文件名以适应最大长度限制.
 
     Args:
         file_name: 文件全名.
-        max_length: 最大长度.
+        max_length: 最大允许长度.
     """
-    if len(file_name) > max_length:
-        keep = (max_length - 3) // 2
-        file_name = f"{file_name[:keep]}...{file_name[-keep:]}"
-    return file_name
+    encoded_name = file_name.encode()
+    max_length -= len(file_suffix.encode())
+    if len(encoded_name) <= max_length:
+        return file_name
+    ellipsis = "…"
+    max_length -= len(ellipsis.encode())
+    truncated_bytes = encoded_name[:max_length]
+    while True:
+        try:
+            truncated_name = truncated_bytes.decode("utf-8")
+            break
+        except UnicodeDecodeError:
+            truncated_bytes = truncated_bytes[:-1]
+    return truncated_name + ellipsis
 
 
-def substitute_with_fullwidth(
-    input_string: str, substitutions: set[str] = {"\x00", "\\", "/", ":", "<", ">", "|", "?", "*", '"', "."}
-) -> str:
+def substitute_with_fullwidth(input_string: str, substitutions: set[str] = set('\x00\\/:<>|?*".')) -> str:
     """
     将字符串中的指定字符替换为全角字符.
 
@@ -43,6 +41,17 @@ def substitute_with_fullwidth(
         substitutions: 需要替换为全角字符的字符集合.
     """
     return "".join(chr(ord(char) + 0xFEE0) if char in substitutions else char for char in input_string)
+
+
+def safe_filename(file_full_name: str, max_length: int = 255) -> str:
+    """安全文件名处理.
+
+    Args:
+        file_full_name: 包含路径的完整文件名.
+    """
+    file_name, file_suffix = os.path.splitext(file_full_name)
+    processed_name = truncate(substitute_with_fullwidth(file_name), file_suffix, max_length)
+    return f"{processed_name}{file_suffix}"
 
 
 async def get_real_url(url: str) -> str | None:
