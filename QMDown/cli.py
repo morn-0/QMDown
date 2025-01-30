@@ -9,7 +9,7 @@ from rich.table import Table
 from typer import rich_utils
 
 from QMDown import __version__, console
-from QMDown.extractor import AlbumExtractor, SongExtractor, SonglistExtractor
+from QMDown.extractor import AlbumExtractor, SongExtractor, SonglistExtractor, ToplistExtractor
 from QMDown.model import Song, SongData
 from QMDown.processor.downloader import AsyncDownloader
 from QMDown.processor.handler import handle_cover, handle_login, handle_lyric, handle_metadata, handle_song_urls
@@ -324,7 +324,7 @@ async def cli(
 
 
 async def get_song_data(urls: list[str], max_quality: int, credential: Credential | None) -> list[SongData]:
-    extractors = [SongExtractor(), SonglistExtractor(), AlbumExtractor()]
+    extractors = [SongExtractor(), SonglistExtractor(), AlbumExtractor(), ToplistExtractor()]
     song_data: list[Song] = []
 
     with console.status("解析链接中..."):
@@ -336,7 +336,7 @@ async def get_song_data(urls: list[str], max_quality: int, credential: Credentia
                 if url == original_url:
                     logging.info(f"[blue][Extractor][/] 获取真实链接失败: {original_url}")
                     continue
-                logging.info(f"{original_url} -> {url}")
+                logging.info(f"[blue][Extractor][/] {original_url} -> {url}")
 
             # 尝试用提取器解析链接
             for extractor in extractors:

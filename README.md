@@ -66,7 +66,7 @@ uv tool install git+https://github.com/luren-dc/QMDown.git@main
   - [x] 专辑
   - [x] 歌单
   - [x] 歌曲
-  - [ ] 排行榜
+  - [x] 排行榜
   - [x] 普通歌词
   - [x] 翻译歌词
   - [x] 罗马歌词

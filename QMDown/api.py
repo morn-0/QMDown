@@ -1,6 +1,6 @@
-from qqmusic_api import Credential, album, lyric, song, songlist, user
+from qqmusic_api import Credential, album, lyric, song, songlist, top, user
 
-from QMDown.model import AlbumDetial, Lyric, Song, SongDetail, SonglistDetail, SongUrl
+from QMDown.model import AlbumDetial, Lyric, Song, SongDetail, SonglistDetail, SongUrl, ToplistDetail
 from QMDown.utils.cache import cached
 
 
@@ -59,3 +59,16 @@ async def get_user_detail(euin: str, credential: Credential):
 @cached(lambda args: f"{args.arguments['mid']}{args.arguments['qrc']}{args.arguments['trans']}{args.arguments['roma']}")
 async def get_lyric(mid: str, qrc: bool, trans: bool, roma: bool) -> Lyric:
     return Lyric.model_validate(await lyric.get_lyric(mid=mid, qrc=qrc, trans=trans, roma=roma))
+
+
+@cached(lambda args: args.arguments["id"])
+async def get_toplist_detail(id: int) -> ToplistDetail:
+    model = top.Top(id)
+    detail = await model.get_detail()
+    return ToplistDetail.model_validate(
+        {
+            "title": detail["title"],
+            "songnum": detail["totalNum"],
+            "songs": await model.get_song(),
+        }
+    )

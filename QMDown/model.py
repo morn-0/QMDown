@@ -162,3 +162,9 @@ class SongData(BaseModel):
     url: SongUrl | None = None
     cover: Path | None = None
     lyric: Path | None = None
+
+
+class ToplistDetail(BaseModel):
+    title: str
+    songnum: int
+    songs: list[Song]
