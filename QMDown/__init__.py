@@ -3,7 +3,7 @@ import logging
 from rich.console import Console
 from rich.logging import RichHandler
 
-__version__ = "0.2.2"
+__version__ = "0.2.3"
 
 console = Console()
 
