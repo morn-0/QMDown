@@ -19,6 +19,9 @@
 
 ---
 
+> [!NOTE]
+> 作者学业繁忙，main 分支暂不可用
+
 **欢迎向本项目提出[Issues](https://github.com/luren-dc/QMDown/issues),贡献[Pull Requests](https://github.com/luren-dc/QMDown/pulls)**
 
 > [!IMPORTANT]
